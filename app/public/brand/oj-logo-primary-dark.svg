@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" width="100%" height="100%">
+  <defs>
+    <style>
+      .brand-orange { fill: #FF6B00; }
+      .brand-cream { fill: #FDFBF5; }
+      .candlestick-green { fill: #00C853; }
+      .candlestick-red { fill: #D50000; }
+      .text-title { font-family: 'Sora', 'Inter', sans-serif; font-weight: 700; font-size: 52px; fill: #FFFFFF; letter-spacing: -0.5px; }
+      .text-sub { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 14px; fill: #A0A0A0; letter-spacing: 4px; text-transform: uppercase; }
+    </style>
+  </defs>
+  <g id="Symbol" transform="translate(10, 10)">
+    <!-- Outer Rind / Options Curve -->
+    <path d="M 50,0 A 50,50 0 1,0 100,50 L 84,50 A 34,34 0 1,1 50,16 Z" class="brand-orange" />
+    <!-- Candlestick Segments -->
+    <!-- Bar 1 (Green) -->
+    <line x1="34" y1="38" x2="34" y2="72" stroke="#00C853" stroke-width="2" stroke-linecap="round" />
+    <rect x="31" y="44" width="6" height="18" rx="1.5" class="candlestick-green" />
+    <!-- Bar 2 (Red) -->
+    <line x1="50" y1="28" x2="50" y2="68" stroke="#D50000" stroke-width="2" stroke-linecap="round" />
+    <rect x="47" y="34" width="6" height="22" rx="1.5" class="candlestick-red" />
+    <!-- Bar 3 (Green) -->
+    <line x1="66" y1="22" x2="66" y2="58" stroke="#00C853" stroke-width="2" stroke-linecap="round" />
+    <rect x="63" y="26" width="6" height="20" rx="1.5" class="candlestick-green" />
+  </g>
+  <g id="Typography">
+    <text x="135" y="72" class="text-title">OJ</text>
+    <text x="137" y="95" class="text-sub">OPTIONS JOURNEY</text>
+  </g>
+</svg>

@@ -1,0 +1,6 @@
+/* Grid items must be able to shrink below intrinsic content width on phones. */
+.hero-grid,.two-col{grid-template-columns:minmax(0,1.35fr) minmax(0,.9fr)}
+.hero-grid>*,.two-col>*,.hero>*,.metrics>*,.candidate,.calendar article{min-width:0}
+.hero{grid-template-columns:minmax(0,1fr) 168px}.metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.compare{grid-template-columns:repeat(2,minmax(0,1fr))}dl{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:900px){.hero-grid,.two-col{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:560px){.hero{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.compare,.calendar{grid-template-columns:minmax(0,1fr)}}

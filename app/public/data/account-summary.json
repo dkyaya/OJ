@@ -1,0 +1,14 @@
+{
+  "totalCapital": 1200,
+  "optionsAllocation": 200,
+  "normalLoss": [
+    40,
+    50
+  ],
+  "absoluteLoss": 60,
+  "maxSpreads": 1,
+  "availableOptionsCapital": 200,
+  "capitalAtRisk": 0,
+  "realizedPnl": null,
+  "unrealizedPnl": null
+}

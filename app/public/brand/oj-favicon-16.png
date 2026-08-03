@@ -1,0 +1,7 @@
+<!-- Save as favicon.svg for modern browser support -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <path d="M 16,0 A 16,16 0 1,0 32,16 L 26.8,16 A 10.8,10.8 0 1,1 16,5.2 Z" fill="#FF6B00" />
+  <rect x="10" y="14" width="2" height="6" rx="0.5" fill="#00C853" />
+  <rect x="15" y="10" width="2" height="8" rx="0.5" fill="#D50000" />
+  <rect x="20" y="8" width="2" height="7" rx="0.5" fill="#00C853" />
+</svg>
