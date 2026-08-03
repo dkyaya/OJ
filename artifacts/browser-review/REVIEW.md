@@ -27,4 +27,4 @@
 
 ## Assessment and limitations
 
-The static dashboard is coherent across the implemented routes and intentionally represents incomplete trading data as unavailable. Empty-stage pages are deliberate until user-confirmed activity exists. The Pages URL cannot be verified until the repository is pushed and GitHub Pages is enabled.
+The static dashboard is coherent across the implemented routes and intentionally represents incomplete trading data as unavailable. Empty-stage pages are deliberate until user-confirmed activity exists. GitHub Pages deployment succeeded and the public overview was inspected at `https://dkyaya.github.io/OJ/`.
