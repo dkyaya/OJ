@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/lib/payoff.test.ts","./src/lib/payoff.ts"],"version":"5.8.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/workflow.tsx","./src/features/packet.ts","./src/lib/payoff.test.ts","./src/lib/payoff.ts","./src/storage/drafts.ts"],"version":"5.8.3"}

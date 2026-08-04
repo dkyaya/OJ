@@ -1,0 +1,3 @@
+import type { Draft } from '../storage/drafts';
+const esc=(v:string)=>v.replace(/\r?\n/g,' ').trim()||'TBD';
+export function packet(d:Draft){const rows=Object.entries(d.data).map(([k,v])=>`- ${k}: ${esc(v)}`).join('\n');return `# OJ Work Update Packet\n\n## Metadata\n\n- Packet type: ${d.kind}\n- Generated at: ${d.updatedAt}\n- Requested action: Update canonical Markdown; validate, build, commit, and deploy.\n- Local sync state: ${d.sync}\n- Safety: No brokerage access or credentials involved.\n\n## Record\n\n${rows}\n\n## Missing information\n\n- Any field marked TBD requires user-provided confirmation.\n\n## Requested repository updates\n\n- Update the canonical Obsidian Markdown record.\n- Regenerate validated public data and deploy.\n`}
