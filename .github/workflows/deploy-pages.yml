@@ -31,6 +31,9 @@ jobs:
       - name: Validate and build
         working-directory: app
         run: npm run validate:data && npm run data:build && npm run typecheck && npm run test && npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true

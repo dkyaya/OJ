@@ -1,0 +1,12 @@
+project_id = "ljpcgvqsrgpssqobeznp"
+
+[auth]
+site_url = "https://dkyaya.github.io/OJ/"
+additional_redirect_urls = ["http://localhost:5173/**", "https://dkyaya.github.io/OJ/**"]
+
+[functions.submit-formalization]
+verify_jwt = true
+[functions.formalization-status]
+verify_jwt = true
+[functions.reconcile-publication]
+verify_jwt = false

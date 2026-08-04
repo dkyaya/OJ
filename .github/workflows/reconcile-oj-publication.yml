@@ -1,0 +1,21 @@
+name: OJ Reconcile Publication
+on:
+  pull_request:
+    types: [closed]
+permissions: { contents: read }
+jobs:
+  reconcile:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'formalize/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify trusted reconciliation function
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          WEBHOOK_SECRET: ${{ secrets.OJ_FORMALIZATION_WEBHOOK_SECRET }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          job_id=$(printf '%s' "$PR_BODY" | sed -nE 's/.*Job: ([0-9a-f-]{36}).*/\1/p' | head -1)
+          test -n "$job_id"
+          curl --fail --silent --show-error "$SUPABASE_URL/functions/v1/reconcile-publication" \
+            -H "x-oj-webhook-secret: $WEBHOOK_SECRET" -H "content-type: application/json" \
+            -d "{\"job_id\":\"$job_id\",\"commit_sha\":\"${{ github.event.pull_request.merge_commit_sha }}\",\"pr_number\":${{ github.event.pull_request.number }},\"pr_url\":\"${{ github.event.pull_request.html_url }}\",\"branch\":\"${{ github.event.pull_request.head.ref }}\"}"

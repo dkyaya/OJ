@@ -1,5 +1,5 @@
-total_account_capital: 1200
-options_allocation: 200
+# Exact balances and allocations live only in the authenticated cloud workspace.
+# This public configuration contains reusable risk rules, never account values.
 normal_max_loss_per_trade_min: 40
 normal_max_loss_per_trade_max: 50
 absolute_max_loss_per_trade: 60

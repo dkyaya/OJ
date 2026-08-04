@@ -1,0 +1,72 @@
+name: OJ Formalize Record
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Supabase formalization job UUID
+        required: true
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+jobs:
+  formalize:
+    name: OJ Formalize
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      OJ_JOB_ID: ${{ inputs.job_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Fetch immutable payload
+        run: |
+          curl --fail --silent --show-error "$SUPABASE_URL/rest/v1/formalization_payloads?job_id=eq.$OJ_JOB_ID&select=payload,job_id" \
+            -H "apikey: $SUPABASE_SECRET_KEY" -H "Authorization: Bearer $SUPABASE_SECRET_KEY" > /tmp/oj-payload.json
+      - id: formalize
+        name: Resolve deterministic branch and note
+        env: { OJ_DRY_RUN: "1" }
+        run: node scripts/formalize-record.mjs /tmp/oj-payload.json
+      - name: Prepare deterministic formalization branch
+        run: |
+          if git ls-remote --exit-code --heads origin "${{ steps.formalize.outputs.branch }}"; then
+            git fetch origin "${{ steps.formalize.outputs.branch }}"
+            git switch -C "${{ steps.formalize.outputs.branch }}" FETCH_HEAD
+          else
+            git switch -c "${{ steps.formalize.outputs.branch }}"
+          fi
+      - name: Generate canonical Markdown
+        run: node scripts/formalize-record.mjs /tmp/oj-payload.json
+      - name: Validate repository
+        working-directory: app
+        run: npm ci && npm run lint && npm run typecheck && npm run test && npm run build
+      - name: Check formalized note privacy
+        run: |
+          ! rg -n "ghp_|github_pat_|sb_secret_|service[_ -]?role|password[[:space:]]*[:=]|routing number|account number|brokerage credential" "${{ steps.formalize.outputs.note_path }}"
+      - name: Commit formalization branch
+        run: |
+          git config user.name "OJ Formalizer"
+          git config user.email "actions@users.noreply.github.com"
+          git add "${{ steps.formalize.outputs.note_path }}" app/public/data
+          if ! git diff --cached --quiet; then
+            git commit -m "Formalize ${{ steps.formalize.outputs.ticker }} revision ${{ steps.formalize.outputs.revision }}"
+          fi
+          git push -u origin "${{ steps.formalize.outputs.branch }}"
+      - id: pr
+        name: Open formalization pull request
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          existing=$(gh pr list --head "${{ steps.formalize.outputs.branch }}" --json number,url --jq '.[0].url // empty')
+          if [ -z "$existing" ]; then
+            existing=$(gh pr create --base main --head "${{ steps.formalize.outputs.branch }}" --title "Formalize ${{ steps.formalize.outputs.ticker }} draft r${{ steps.formalize.outputs.revision }}" --body "Automated OJ formalization for ${{ steps.formalize.outputs.record_type }}. Job: $OJ_JOB_ID. Manual merge required. Codex must review calculations, confirmations, privacy, history, generated data, and checks. Missing numeric inputs remain TBD. The branch and canonical note are public repository content.")
+          fi
+          gh label create "oj-formalization" --color "EC6D27" --description "Automated OJ record formalization" --force
+          gh pr edit "$existing" --add-label "oj-formalization"
+          echo "url=$existing" >> "$GITHUB_OUTPUT"
+          echo "number=${existing##*/}" >> "$GITHUB_OUTPUT"
+      - name: Update cloud job
+        run: |
+          curl --fail --silent --show-error -X PATCH "$SUPABASE_URL/rest/v1/formalization_jobs?id=eq.$OJ_JOB_ID" \
+            -H "apikey: $SUPABASE_SECRET_KEY" -H "Authorization: Bearer $SUPABASE_SECRET_KEY" -H "Content-Type: application/json" \
+            -d '{"status":"pull_request_open","pr_number":${{ steps.pr.outputs.number }},"pr_url":"${{ steps.pr.outputs.url }}","branch":"${{ steps.formalize.outputs.branch }}","note_path":"${{ steps.formalize.outputs.note_path }}"}'

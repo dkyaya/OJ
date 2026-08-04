@@ -1,10 +1,10 @@
 # OJ — Options Journey
 
-OJ is a private, local-first options-trading research journal with a static React dashboard. It is not a brokerage and cannot place trades.
+OJ is a private, local-first options-trading research journal with authenticated Supabase draft synchronization and a static React shell. It is not a brokerage and cannot place trades.
 
 ## Architecture
 
-`Obsidian Markdown → validate notes → sanitize/static JSON → Vite React dashboard → GitHub Pages`
+`IndexedDB cache ↔ Supabase private drafts → immutable submission → automated PR → human merge → canonical Obsidian Markdown → sanitized GitHub Pages build`
 
 The initial repository was empty; this foundation follows the supplied structure with the Vite application contained in `app/` and source-vault folders at the repository root.
 
@@ -17,18 +17,19 @@ npm run build
 npm run dev
 ```
 
-The first command validates `Trade Ideas/`, then produces sanitized output under `app/public/data/`. Never edit those generated JSON files as the source of truth.
+The build validates `Trade Ideas/`, then produces sanitized output under `app/public/data/`. Never edit generated JSON as the source of truth. Copy `app/.env.example` to an ignored local `.env` for browser-safe Supabase configuration.
 
-## Obsidian workflow
+## Cloud and Obsidian workflow
 
-1. Create a note with a supplied template.
-2. Keep all unknown contract/fill fields as `TBD`.
-3. Move notes to `Active Trades/` or `Closed Trades/` only after explicit user-confirmed fills/exits.
-4. Run `npm run data:build` to update the dashboard.
+1. OJ immediately saves a draft to IndexedDB, then syncs it to the signed-in owner’s Supabase rows.
+2. Submission freezes an immutable revision and dispatches the formalization workflow.
+3. Automation opens a branch and pull request; Codex reviews the same branch.
+4. The user manually merges. Reconciliation marks the cloud record published and GitHub Pages redeploys.
+5. Unknown market/fill fields remain `TBD`; actual entries/exits always require explicit confirmation.
 
 ## Privacy
 
-Only sanitized public-safe fields are emitted. Do not place credentials, account numbers, tax data, addresses, unredacted confirmations, or private attachments in public-source notes. GitHub Pages deployment is configured in `.github/workflows/deploy-pages.yml` and expects repository Pages to be enabled.
+The public shell contains no exact balances or private draft content. Authenticated records are loaded from Supabase under owner-only RLS and an approval allowlist. Never store credentials, account numbers, tax data, addresses, raw confirmations, or brokerage authentication in OJ.
 
 ## Quality checks
 
