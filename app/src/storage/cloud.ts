@@ -66,7 +66,6 @@ export async function syncDraft(draft: Draft): Promise<CloudResult> {
 
   const revision = remote.data ? remote.data.revision + 1 : 1;
   const row = {
-    user_id: user.id,
     ticker: draft.data.Ticker || 'TBD',
     strategy: (draft.data.Strategy || 'bull-call-spread').toLowerCase().replaceAll(' ', '-'),
     bias: draft.data.Bias || 'TBD',
@@ -86,7 +85,7 @@ export async function syncDraft(draft: Draft): Promise<CloudResult> {
         .eq('revision', remote.data.revision)
         .select()
         .maybeSingle()
-    : await supabase.from('trade_ideas').insert({ ...row, id: draft.id }).select().maybeSingle();
+    : await supabase.from('trade_ideas').insert({ ...row, id: draft.id, user_id: user.id }).select().maybeSingle();
 
   if (saved.error) {
     const latest = await supabase.from('trade_ideas').select('*').eq('id', draft.id).maybeSingle();

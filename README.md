@@ -1,36 +1,24 @@
-# OJ — Options Journey
+# OJ — Options Journey public application
 
-OJ is a private, local-first options-trading research journal with authenticated Supabase draft synchronization and a static React shell. It is not a brokerage and cannot place trades.
+OJ is a public, static React application shell for a private options-research journal. It is not a brokerage, never receives brokerage credentials, and cannot place trades.
 
-## Architecture
+## Privacy boundary
 
-`IndexedDB cache ↔ Supabase private drafts → immutable submission → automated PR → human merge → canonical Obsidian Markdown → sanitized GitHub Pages build`
+This repository contains frontend code, branding, browser-safe Supabase configuration, schema/migrations, Edge Functions, tests, and empty demo fixtures. Canonical Markdown, trade theses, journal entries, research, attachments, emotional notes, real account values, immutable payloads, and formalization branches live only in the private `dkyaya/OJ-Journal` repository or owner-scoped Supabase rows.
 
-The initial repository was empty; this foundation follows the supplied structure with the Vite application contained in `app/` and source-vault folders at the repository root.
+`IndexedDB cache ↔ approved owner Supabase drafts → private OJ-Journal PR → manual merge → atomic owner-visible publication`
 
-## Local use
+Ordinary journal publication never commits to this repository and never rebuilds GitHub Pages.
 
-```bash
-cd app
-npm install
-npm run build
-npm run dev
-```
+## Local checks
 
-The build validates `Trade Ideas/`, then produces sanitized output under `app/public/data/`. Never edit generated JSON as the source of truth. Copy `app/.env.example` to an ignored local `.env` for browser-safe Supabase configuration.
+From `app/`, run `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and `npm run privacy:check`.
 
-## Cloud and Obsidian workflow
+## Owner workflow
 
-1. OJ immediately saves a draft to IndexedDB, then syncs it to the signed-in owner’s Supabase rows.
-2. Submission freezes an immutable revision and dispatches the formalization workflow.
-3. Automation opens a branch and pull request; Codex reviews the same branch.
-4. The user manually merges. Reconciliation marks the cloud record published and GitHub Pages redeploys.
-5. Unknown market/fill fields remain `TBD`; actual entries/exits always require explicit confirmation.
-
-## Privacy
-
-The public shell contains no exact balances or private draft content. Authenticated records are loaded from Supabase under owner-only RLS and an approval allowlist. Never store credentials, account numbers, tax data, addresses, raw confirmations, or brokerage authentication in OJ.
-
-## Quality checks
-
-Run `npm run validate:data`, `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` from `app/`. Browser-review evidence is kept in `artifacts/browser-review/` and never deployed.
+1. Create or edit a local draft. OJ saves immediately in IndexedDB and syncs the exact revision after approved sign-in.
+2. Resolve any device conflict explicitly.
+3. Submit the synchronized revision. A GitHub App dispatches a private formalization workflow.
+4. Automatic private checks and Codex review run on that PR.
+5. The owner manually merges. A signed callback invokes one transactional publication RPC.
+6. OJ loads the canonical normalized record from Supabase without a Pages deployment.

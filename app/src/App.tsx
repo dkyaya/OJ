@@ -1,12 +1,124 @@
-import{useEffect,useState}from'react';import{HashRouter,NavLink,Route,Routes}from'react-router-dom';import{Activity,BarChart3,BookOpen,CalendarDays,ClipboardCheck,Lightbulb,Menu,Plus,Settings,ShieldCheck,Target,X}from'lucide-react';import{Workflow}from'./components/Workflow';
-type T={ticker:string;strategy:string;bias:string;confidence:string;catalysts:string[];candidates:{name:string;width:string;debit:string;risk:string;summary:string}[]};type C={date:string;event:string;sensitivity:string;holdThrough:string;ticker:string};const n=[['/','Overview',Activity],['/trade-ideas','Trade ideas',Lightbulb],['/active-trades','Active',Target],['/closed-trades','Closed',ClipboardCheck],['/research','Research',BookOpen],['/catalysts','Calendar',CalendarDays],['/analytics','Analytics',BarChart3],['/journal','Journal',BookOpen],['/settings','Settings',Settings]]as const;const load=<X,>(x:string)=>fetch(`${import.meta.env.BASE_URL}data/${x}.json`).then(r=>r.json()as Promise<X>);
-const Page=({title,tag,children}:{title:string;tag:string;children:React.ReactNode})=><section className="page"><div className="page-heading"><div><span className="eyebrow">{tag}</span><h1>{title}</h1></div></div>{children}</section>;
-function Mobile({idea}:{idea:()=>void}){const[o,setO]=useState(false);return <div className="mobile-menu"><button className="menu-trigger"aria-label={o?'Close navigation':'Open navigation'}aria-expanded={o}onClick={()=>setO(!o)}>{o?<X/>:<Menu/>}</button>{o&&<div className="menu-sheet"><button className="mobile-idea"onClick={()=>{idea();setO(false)}}><Plus/>New trade idea</button>{n.map(([to,l,I])=><NavLink key={to}to={to}end={to==='/'}onClick={()=>setO(false)}><I size={18}/>{l}</NavLink>)}</div>}</div>}
-function Shell({children}:{children:React.ReactNode}){const[d,setD]=useState(true),[w,setW]=useState(false);useEffect(()=>{document.documentElement.dataset.theme=d?'dark':'light'},[d]);return <div className="shell"><aside className="sidebar"><img className="logo"src={`${import.meta.env.BASE_URL}brand/oj-logo-primary-light.svg`}alt="OJ"/><nav>{n.map(([to,l,I])=><NavLink key={to}to={to}end={to==='/'}><I size={18}/>{l}</NavLink>)}</nav><button className="new-trade"onClick={()=>setW(true)}><Plus size={16}/>New trade idea</button><div className="privacy"><ShieldCheck size={17}/>Research only<br/>No brokerage access</div></aside><main><header className="topbar"><div><span className="eyebrow">Private decision journal</span><strong>Options Journey</strong></div><div className="top-actions"><button className="theme"onClick={()=>setD(!d)}>{d?'Light mode':'Dark mode'}</button></div></header>{children}</main><Mobile idea={()=>setW(true)}/><Workflow open={w}onClose={()=>setW(false)}/></div>}
-function Overview({t,c}:{t:T;c:C[]}){return <Page title="A clearer record of every decision."tag="Overview"><div className="hero-grid"><section className="hero panel"><div><span className="eyebrow">Private capital context</span><h2>Sign in <small>to view account metrics</small></h2><p>Exact balances and private performance remain in authenticated cloud records, never public static JSON.</p></div><div className="risk"><div className="ring"><div><b>—</b><span>private</span></div></div><p>owner-only view</p></div><div className="metrics"><div><span>Options allocation</span><b>Private</b></div><div><span>Available</span><b>Private</b></div><div><span>Realized P&L</span><b>Private</b></div><div><span>Unrealized P&L</span><b>Private</b></div></div></section><section className="panel journey"><span className="eyebrow">Journey progress</span><h2>One idea, properly documented.</h2><div className="pipeline">{['Research','Watchlist','Ready','Active','Closed','Reviewed'].map((x,i)=><div className={i===1?'current':''}key={x}><i>{i+1}</i>{x}</div>)}</div></section></div><div className="two-col"><section className="panel"><span className="eyebrow">Published idea</span><h2>{t.ticker} bull call spread</h2><p>Public-safe thesis summary. Private annotations and drafts require owner authentication.</p></section><section className="panel"><span className="eyebrow">Upcoming catalysts</span><h2>Next four events</h2><div className="catalyst-list">{c.slice(0,4).map(x=><div key={x.event}><b>{x.date.slice(5)}</b><span>{x.event}<small>{x.ticker} · {x.sensitivity}</small></span></div>)}</div><NavLink className="text-link"to="/catalysts">Open calendar →</NavLink></section></div></Page>}
-function Ideas({t}:{t:T}){return <Page title="Trade ideas"tag="Research pipeline"><section className="panel"><span className="eyebrow">{t.bias} · {t.confidence}</span><h2>{t.ticker} · {t.strategy}</h2><div className="compare">{t.candidates.map((x,i)=><article className={i?'candidate':'candidate featured'}key={x.name}><span className="eyebrow">{x.name}</span><h3>{x.width}-wide</h3><p>{x.summary}</p><dl><div><dt>Target debit</dt><dd>{x.debit}</dd></div><div><dt>Risk</dt><dd>{x.risk}</dd></div><div><dt>Final strikes</dt><dd>TBD</dd></div></dl></article>)}</div></section></Page>}
-const cat=(e:string)=>e.includes('earnings')?'earn':e.includes('CPI')||e.includes('PPI')?'inflation':'macro';
-function Calendar({c}:{c:C[]}){const[mode,setMode]=useState<'Month'|'Week'|'Day'>('Month'),[day,setDay]=useState(1);const m=7,year=2026,days=new Date(year,m+1,0).getDate(),start=new Date(year,m,1).getDay(),eventAt=(d:number)=>c.filter(x=>x.date===`2026-08-${String(d).padStart(2,'0')}`);const agenda=(mode==='Week'?Array.from({length:7},(_,i)=>day+i):[day]).flatMap(d=>eventAt(d).map(x=><article className={cat(x.event)}key={`${d}${x.event}`}><b>Aug {d}</b><h3>{x.event}</h3><p>{x.ticker} · {x.sensitivity} sensitivity · {x.holdThrough}</p></article>));const content=mode==='Month'?<div className="month-grid">{['S','M','T','W','T','F','S'].map((x,i)=><b key={i}>{x}</b>)}{Array.from({length:start}).map((_,i)=><i key={i}/>)}{Array.from({length:days},(_,i)=>{const d=i+1,e=eventAt(d);return <button className={`cal-day ${e.length?'has-event':''}`}key={d}onClick={()=>{setDay(d);setMode('Day')}}><b>{d}</b>{e.map(x=><span className={cat(x.event)}key={x.event}>{x.event}</span>)}</button>})}</div>:<div className="agenda">{agenda.length?agenda:<p>No scheduled catalysts.</p>}</div>;return <Page title="Catalyst calendar"tag="All trade-linked events"><div className="calendar-toolbar"><div><button onClick={()=>setDay(Math.max(1,day-7))}>‹</button><strong>August 2026</strong><button onClick={()=>setDay(Math.min(days,day+7))}>›</button></div><div>{(['Month','Week','Day']as const).map(x=><button className={mode===x?'selected':''}onClick={()=>setMode(x)}key={x}>{x}</button>)}</div></div><section className="calendar-shell panel">{content}</section><div className="legend"><span className="macro">Macro / jobs</span><span className="inflation">Inflation</span><span className="earn">Earnings</span></div></Page>}
-function Empty({title}:{title:string}){return <Page title={title}tag="Journal workspace"><section className="empty panel"><h2>Ready when you are.</h2><p>Cloud drafts become canonical records only after an automated pull request is reviewed and you manually merge it.</p></section></Page>}
-function SettingsPage(){return <Page title="Settings & privacy"tag="Owner controls"><div className="two-col"><section className="panel"><span className="eyebrow">Public shell</span><h2>Sanitized by design</h2><p>GitHub Pages contains the application shell, public-safe thesis summaries, and catalyst data. Exact balances, private annotations, emotional-state notes, account identifiers, confirmations, and cloud drafts are excluded.</p></section><section className="panel"><span className="eyebrow">Authenticated cloud</span><h2>Your approved account only</h2><p>Private drafts load after magic-link sign-in and owner approval. Row-level security isolates every record. OJ stores no brokerage credentials, never connects to Robinhood, and cannot execute trades.</p></section></div><section className="panel"><span className="eyebrow">Canonical record</span><h2>Manual merge remains the final gate</h2><p>Submitting creates an immutable snapshot and automated pull request. Codex reviews the branch, but only your manual merge makes its Obsidian Markdown canonical.</p></section></Page>}
-function App(){const[t,setT]=useState<T>(),[c,setC]=useState<C[]>([]),[l,setL]=useState(true);useEffect(()=>{load<T[]>('trades').then(x=>setT(x[0]));load<C[]>('catalysts').then(setC);const x=setTimeout(()=>setL(false),1600);return()=>clearTimeout(x)},[]);if(!t||l)return <div className="loading"><div className="juice"><img src={`${import.meta.env.BASE_URL}brand/oj-logo-mark-white.svg`}alt="OJ"/><i/><b/><b/></div><span>Preparing your journal…</span></div>;return <HashRouter><Shell><Routes><Route path="/"element={<Overview t={t}c={c}/>}/><Route path="/trade-ideas"element={<Ideas t={t}/>}/><Route path="/catalysts"element={<Calendar c={c}/>}/><Route path="/settings"element={<SettingsPage/>}/>{['/active-trades','/closed-trades','/research','/analytics','/journal'].map(x=><Route key={x}path={x}element={<Empty title={n.find(q=>q[0]===x)?.[1]||''}/>}/>)}</Routes></Shell></HashRouter>}export default App;
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, BarChart3, BookOpen, CalendarDays, ClipboardCheck, Lightbulb, Menu, Plus, Settings, ShieldCheck, Target, X } from 'lucide-react';
+import { Workflow } from './components/Workflow';
+import { supabase } from './lib/supabase';
+
+type Candidate = { name: string; width: string; debit: string; risk: string; summary: string };
+type Trade = { id: string; ticker: string; strategy: string; bias: string; confidence: string; status: string; candidates: Candidate[] };
+type Catalyst = { id: string; date: string; event: string; sensitivity: string; holdThrough: string; ticker: string; type: string };
+const navigation = [
+  ['/', 'Overview', Activity], ['/trade-ideas', 'Trade ideas', Lightbulb], ['/active-trades', 'Active', Target],
+  ['/closed-trades', 'Closed', ClipboardCheck], ['/research', 'Research', BookOpen], ['/catalysts', 'Calendar', CalendarDays],
+  ['/analytics', 'Analytics', BarChart3], ['/journal', 'Journal', BookOpen], ['/settings', 'Settings', Settings],
+] as const;
+type RoutePath = typeof navigation[number][0];
+
+const currentHashPath = (): RoutePath => {
+  const requested = window.location.hash.slice(1) || '/';
+  return navigation.some(([path]) => path === requested) ? requested as RoutePath : '/';
+};
+
+function NavItem({ to, current, children, className = '', onClick }: { to: RoutePath; current: RoutePath; children: React.ReactNode; className?: string; onClick?: () => void }) {
+  return <a className={`${className} ${current === to ? 'active' : ''}`.trim()} href={`#${to}`} onClick={onClick}>{children}</a>;
+}
+
+const Page = ({ title, tag, children }: { title: string; tag: string; children: React.ReactNode }) => (
+  <section className="page"><div className="page-heading"><div><span className="eyebrow">{tag}</span><h1>{title}</h1></div></div>{children}</section>
+);
+
+function MobileMenu({ onIdea, current }: { onIdea: () => void; current: RoutePath }) {
+  const [open, setOpen] = useState(false);
+  return <div className="mobile-menu">
+    <button className="menu-trigger" aria-label={open ? 'Close navigation' : 'Open navigation'} aria-expanded={open} onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
+    {open && <div className="menu-sheet"><button className="mobile-idea" onClick={() => { onIdea(); setOpen(false); }}><Plus />New trade idea</button>
+      {navigation.map(([to, label, Icon]) => <NavItem key={to} to={to} current={current} onClick={() => setOpen(false)}><Icon size={18} />{label}</NavItem>)}
+    </div>}
+  </div>;
+}
+
+function Shell({ children, current }: { children: React.ReactNode; current: RoutePath }) {
+  const [dark, setDark] = useState(true);
+  const [workflow, setWorkflow] = useState(false);
+  useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; }, [dark]);
+  return <div className="shell">
+    <aside className="sidebar"><img className="logo" src={`${import.meta.env.BASE_URL}brand/oj-logo-primary-light.svg`} alt="OJ" />
+      <nav>{navigation.map(([to, label, Icon]) => <NavItem key={to} to={to} current={current}><Icon size={18} />{label}</NavItem>)}</nav>
+      <button className="new-trade" onClick={() => setWorkflow(true)}><Plus size={16} />New trade idea</button>
+      <div className="privacy"><ShieldCheck size={17} />Research only<br />No brokerage access</div>
+    </aside>
+    <main><header className="topbar"><div><span className="eyebrow">Private decision journal</span><strong>Options Journey</strong></div><div className="top-actions"><button className="theme" onClick={() => setDark(!dark)}>{dark ? 'Light mode' : 'Dark mode'}</button></div></header>{children}</main>
+    <MobileMenu current={current} onIdea={() => setWorkflow(true)} /><Workflow open={workflow} onClose={() => setWorkflow(false)} />
+  </div>;
+}
+
+function Overview({ trade, catalysts }: { trade?: Trade; catalysts: Catalyst[] }) {
+  return <Page title="A clearer record of every decision." tag="Overview">
+    <div className="hero-grid"><section className="hero panel"><div><span className="eyebrow">Private capital context</span><h2>Sign in <small>to view account metrics</small></h2><p>Exact balances and private performance remain in authenticated cloud records, never the public build.</p></div><div className="risk"><div className="ring"><div><b>—</b><span>private</span></div></div><p>owner-only view</p></div><div className="metrics"><div><span>Options allocation</span><b>Private</b></div><div><span>Available</span><b>Private</b></div><div><span>Realized P&amp;L</span><b>Private</b></div><div><span>Unrealized P&amp;L</span><b>Private</b></div></div></section>
+      <section className="panel journey"><span className="eyebrow">Journey progress</span><h2>{trade ? 'One idea, properly documented.' : 'Your workspace is ready.'}</h2><div className="pipeline">{['Research','Watchlist','Ready','Active','Closed','Reviewed'].map((label,index) => <div className={trade && index === 1 ? 'current' : ''} key={label}><i>{index + 1}</i>{label}</div>)}</div></section></div>
+    <div className="two-col"><section className="panel"><span className="eyebrow">Owner cloud workspace</span>{trade ? <><h2>{trade.ticker} · {trade.strategy}</h2><p>{trade.status} · {trade.bias} · {trade.confidence}. Canonical notes remain in the private journal repository.</p></> : <><h2>No owner records loaded</h2><p>Sign in or create a draft. The public Pages artifact contains only this empty application shell.</p></>}</section>
+      <section className="panel"><span className="eyebrow">Upcoming catalysts</span><h2>Next four events</h2><div className="catalyst-list">{catalysts.slice(0,4).map((item) => <div key={item.id}><b>{item.date.slice(5)}</b><span>{item.event}<small>{item.ticker} · {item.sensitivity}</small></span></div>)}</div>{!catalysts.length && <p>No owner catalysts loaded.</p>}<a className="text-link" href="#/catalysts">Open calendar →</a></section></div>
+  </Page>;
+}
+
+function Ideas({ trades }: { trades: Trade[] }) {
+  return <Page title="Trade ideas" tag="Research pipeline">{trades.length ? trades.map((trade) => <section className="panel trade-card" key={trade.id}><span className="eyebrow">{trade.bias} · {trade.confidence}</span><h2>{trade.ticker} · {trade.strategy}</h2><div className="compare">{trade.candidates.map((candidate,index) => <article className={index ? 'candidate' : 'candidate featured'} key={candidate.name}><span className="eyebrow">{candidate.name}</span><h3>{candidate.width}</h3><p>{candidate.summary}</p><dl><div><dt>Target debit</dt><dd>{candidate.debit}</dd></div><div><dt>Risk</dt><dd>{candidate.risk}</dd></div></dl></article>)}</div></section>) : <section className="empty panel"><h2>No ideas on this device yet.</h2><p>Use New trade idea, then sign in to synchronize it privately across devices.</p></section>}</Page>;
+}
+
+const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+const category = (item: Catalyst) => item.type === 'earnings' || /earnings/i.test(item.event) ? 'earn' : item.type === 'inflation' || /CPI|PPI|inflation/i.test(item.event) ? 'inflation' : 'macro';
+function Calendar({ catalysts }: { catalysts: Catalyst[] }) {
+  const [mode, setMode] = useState<'Month'|'Week'|'Day'>('Month');
+  const [focus, setFocus] = useState(() => new Date());
+  const eventMap = useMemo(() => new Map(catalysts.map((item) => [item.date, [...(catalysts.filter((other) => other.date === item.date))]])), [catalysts]);
+  const monthStart = new Date(focus.getFullYear(), focus.getMonth(), 1);
+  const gridStart = addDays(monthStart, -monthStart.getDay());
+  const weekStart = addDays(focus, -focus.getDay());
+  const move = (direction: number) => setFocus((current) => mode === 'Month' ? new Date(current.getFullYear(), current.getMonth() + direction, 1) : addDays(current, direction * (mode === 'Week' ? 7 : 1)));
+  const title = mode === 'Month' ? focus.toLocaleDateString(undefined,{month:'long',year:'numeric'}) : mode === 'Week' ? `${weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'})} – ${addDays(weekStart,6).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}` : focus.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const month = <div className="month-grid">{['S','M','T','W','T','F','S'].map((label,index) => <b key={index}>{label}</b>)}{Array.from({length:42},(_,index) => { const date=addDays(gridStart,index); const events=eventMap.get(dateKey(date)) || []; return <button className={`cal-day ${events.length ? 'has-event' : ''} ${date.getMonth() !== focus.getMonth() ? 'outside' : ''}`} key={dateKey(date)} onClick={() => { setFocus(date); setMode('Day'); }}><b>{date.getDate()}</b>{events.slice(0,3).map((item) => <span className={category(item)} key={item.id}>{item.event}</span>)}{events.length > 3 && <small>+{events.length - 3} more</small>}</button>; })}</div>;
+  const agendaDates = mode === 'Week' ? Array.from({length:7},(_,index) => addDays(weekStart,index)) : [focus];
+  const agenda = <div className={`agenda ${mode.toLowerCase()}`}>{agendaDates.map((date) => <section className="agenda-day" key={dateKey(date)}><header><b>{date.toLocaleDateString(undefined,{weekday:'short'})}</b><span>{date.toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></header>{(eventMap.get(dateKey(date)) || []).map((item) => <article className={category(item)} key={item.id}><b>{item.type || 'Catalyst'}</b><h3>{item.event}</h3><p>{item.ticker} · {item.sensitivity} sensitivity · {item.holdThrough}</p></article>)}{!(eventMap.get(dateKey(date)) || []).length && <p>No scheduled catalysts.</p>}</section>)}</div>;
+  return <Page title="Catalyst calendar" tag="All owner research events"><div className="calendar-toolbar"><div><button onClick={() => move(-1)} aria-label={`Previous ${mode.toLowerCase()}`}>‹</button><strong>{title}</strong><button onClick={() => move(1)} aria-label={`Next ${mode.toLowerCase()}`}>›</button><button onClick={() => setFocus(new Date())}>Today</button></div><div>{(['Month','Week','Day'] as const).map((view) => <button className={mode === view ? 'selected' : ''} onClick={() => setMode(view)} key={view}>{view}</button>)}</div></div><section className="calendar-shell panel">{mode === 'Month' ? month : agenda}</section><div className="legend"><span className="macro">Macro / jobs</span><span className="inflation">Inflation</span><span className="earn">Earnings</span></div></Page>;
+}
+
+function Empty({ title }: { title: string }) { return <Page title={title} tag="Journal workspace"><section className="empty panel"><h2>Ready when you are.</h2><p>Cloud drafts become canonical only after a private pull request is reviewed and manually merged.</p></section></Page>; }
+function SettingsPage() { return <Page title="Settings & privacy" tag="Owner controls"><div className="two-col"><section className="panel"><span className="eyebrow">Public shell</span><h2>Empty by design</h2><p>GitHub Pages contains the application, branding, and empty demo fixtures—no real thesis, calendar, account, journal, or payload data.</p></section><section className="panel"><span className="eyebrow">Authenticated cloud</span><h2>Your approved account only</h2><p>Private drafts and normalized published records load after sign-in under owner-only RLS. OJ stores no brokerage credentials and cannot execute trades.</p></section></div><section className="panel"><span className="eyebrow">Private canonical journal</span><h2>Manual merge remains the final gate</h2><p>Submit freezes a revision and opens a private PR in OJ-Journal. Automatic checks and Codex review do not replace your merge decision.</p></section></Page>; }
+
+function App() {
+  const [route, setRoute] = useState<RoutePath>(currentHashPath);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [catalysts, setCatalysts] = useState<Catalyst[]>([]);
+  const [loading, setLoading] = useState(true);
+  const refresh = useCallback(async () => {
+    if (!supabase) { setTrades([]); setCatalysts([]); return; }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setTrades([]); setCatalysts([]); return; }
+    const [ideasResult, catalystResult] = await Promise.all([
+      supabase.from('trade_ideas').select('id,ticker,strategy,bias,confidence,sync_status,data').is('deleted_at',null).order('updated_at',{ascending:false}),
+      supabase.from('catalysts').select('id,event,event_type,event_at,data,trade_ideas(ticker)').is('deleted_at',null).order('event_at',{ascending:true}),
+    ]);
+    const mappedTrades = (ideasResult.data || []).map((row) => {
+      const data = (row.data || {}) as Record<string, unknown>;
+      const submitted = Array.isArray(data.candidates) ? data.candidates as Array<Record<string,unknown>> : [];
+      const fallback = [
+        { name:'Balanced', width:'Structure TBD', debit:String(data['Balanced candidate'] || 'TBD'), risk:'TBD', summary:String(data['Balanced candidate'] || 'Complete candidate details in the private draft.') },
+        { name:'Aggressive', width:'Structure TBD', debit:String(data['Aggressive candidate'] || 'TBD'), risk:'TBD', summary:String(data['Aggressive candidate'] || 'Complete candidate details in the private draft.') },
+      ];
+      const candidates = submitted.length ? submitted.map((item,index) => ({ name:String(item.name || (index ? 'Aggressive' : 'Balanced')), width:String(item.width || 'Structure TBD'), debit:String(item.net_debit || item.debit || 'TBD'), risk:String(item.maximum_loss || item.risk || 'TBD'), summary:String(item.summary || 'Owner cloud candidate') })) : fallback;
+      return { id:row.id,ticker:row.ticker,strategy:row.strategy,bias:row.bias,confidence:row.confidence || 'TBD',status:row.sync_status,candidates };
+    });
+    const mappedCatalysts = (catalystResult.data || []).filter((row) => row.event_at).map((row) => ({ id:row.id,date:String(row.event_at).slice(0,10),event:row.event,sensitivity:String((row.data as Record<string,unknown>)?.sensitivity || 'TBD'),holdThrough:String((row.data as Record<string,unknown>)?.hold_through || 'research only'),ticker:String((row.trade_ideas as unknown as {ticker?:string} | null)?.ticker || 'Market'),type:row.event_type }));
+    setTrades(mappedTrades); setCatalysts(mappedCatalysts);
+  }, []);
+  useEffect(() => { const timer=window.setTimeout(() => setLoading(false),900); void refresh(); const auth=supabase?.auth.onAuthStateChange(() => void refresh()); const update=() => void refresh(); window.addEventListener('oj-cloud-workspace-updated',update); return () => { clearTimeout(timer); auth?.data.subscription.unsubscribe(); window.removeEventListener('oj-cloud-workspace-updated',update); }; }, [refresh]);
+  useEffect(() => { const updateRoute = () => setRoute(currentHashPath()); window.addEventListener('hashchange', updateRoute); return () => window.removeEventListener('hashchange', updateRoute); }, []);
+  if (loading) return <div className="loading"><div className="juice"><img src={`${import.meta.env.BASE_URL}brand/oj-logo-mark-white.svg`} alt="OJ" /><i /><b /><b /></div><span>Preparing your journal…</span></div>;
+  const content = route === '/' ? <Overview trade={trades[0]} catalysts={catalysts} />
+    : route === '/trade-ideas' ? <Ideas trades={trades} />
+    : route === '/catalysts' ? <Calendar catalysts={catalysts} />
+    : route === '/settings' ? <SettingsPage />
+    : <Empty title={navigation.find((item) => item[0] === route)?.[1] || ''} />;
+  return <Shell current={route}>{content}</Shell>;
+}
+export default App;

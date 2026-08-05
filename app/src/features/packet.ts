@@ -15,7 +15,7 @@ export function packet(draft: Draft) {
 - Cloud record ID: ${draft.id}
 - Cloud revision: ${draft.cloudRevision ?? 'Not synchronized'}
 - Formalization job ID: ${draft.formalizationJobId ?? 'Not submitted'}
-- Requested action: Update canonical Markdown; validate, build, commit, and deploy.
+- Requested action: Resume this private cloud draft; submit only through the private canonical-journal PR workflow.
 - Local sync state: ${draft.sync}
 - Safety: No brokerage access or credentials involved.
 

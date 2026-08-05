@@ -201,7 +201,7 @@ export function Workflow({ open, onClose }: { open: boolean; onClose: () => void
     if (!current?.cloudRevision || current.sync !== 'synced') {
       return setMessage('Wait for this exact revision to show Synced before submission.');
     }
-    if (!confirm('Submit this exact revision to a PUBLIC GitHub pull-request branch? Do not continue if any field contains private notes, balances, account details, credentials, or identifying information. You will still review and manually merge it.')) return;
+    if (!confirm('Submit this exact revision for a PRIVATE canonical-journal pull request? You will still review and manually merge it. No brokerage action is taken.')) return;
 
     setBusy(true);
     try {
@@ -216,7 +216,7 @@ export function Workflow({ open, onClose }: { open: boolean; onClose: () => void
       await saveDraft(next);
       draftRef.current = next;
       setDraft(next);
-      setMessage(result.reused ? 'This exact revision was already submitted; its existing receipt was restored.' : 'Submitted. The automated pull request is being prepared.');
+      setMessage(result.reused ? 'This exact revision was already submitted; its private receipt was restored.' : 'Submitted. The private canonical-journal pull request is being prepared.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Submission failed. Your local draft and packet remain available.');
     } finally {
@@ -287,7 +287,7 @@ export function Workflow({ open, onClose }: { open: boolean; onClose: () => void
             <p>
               Review this revision. Candidate numbers remain TBD unless explicitly supplied. Cloud synchronization does not alter canonical Markdown; submission creates a pull request for Codex review and your manual merge.
             </p>
-            <p className="public-warning"><b>Public-repository boundary:</b> submitted fields enter a public GitHub branch. Keep private notes, balances, account details, credentials, screenshots, and identifying information in the authenticated cloud only.</p>
+            <p className="public-warning"><b>Private publication boundary:</b> submitted fields enter a private OJ-Journal branch. Credentials, brokerage authentication, account identifiers, and raw confirmations still never belong in a draft.</p>
             {Object.entries(data)
               .filter(([, value]) => value)
               .map(([key, value]) => (
@@ -305,8 +305,8 @@ export function Workflow({ open, onClose }: { open: boolean; onClose: () => void
             <b>Submission receipt</b>
             <span>{draft.formalizationStatus || 'formalization_pending'}</span>
             <small>Job {draft.formalizationJobId}</small>
-            {draft.prUrl && (
-              <a href={draft.prUrl} target="_blank" rel="noreferrer">
+            {draft.prUrl && /^https:\/\/github\.com\/dkyaya\/OJ-Journal\/pull\/[1-9][0-9]*$/.test(draft.prUrl) && (
+              <a href={draft.prUrl} target="_blank" rel="noopener noreferrer">
                 Open pull request <ExternalLink size={14} />
               </a>
             )}

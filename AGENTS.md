@@ -1,11 +1,9 @@
-# OJ agent guide
+# OJ public application agent guide
 
-- Obsidian Markdown is the durable source of truth. Generated `app/public/data/*.json` is sanitized, derived output.
-- Never access broker credentials, place trades, invent prices/fills, or mark a trade entered/closed without explicit user confirmation.
-- Preserve history: add dated log entries rather than replacing material facts.
-- Validate notes before building. Incomplete contract fields must stay `TBD`/`null`.
-- Public data must exclude account numbers, credentials, addresses, tax data, private attachments, and raw confirmations.
-- Review the rendered app in desktop and mobile viewports after meaningful UI changes. Respect reduced motion and keep a calm, precise visual hierarchy.
-- Formalization PR review must verify the canonical note path, frontmatter, calculations, user-confirmed versus calculated fields, missing information, privacy, lifecycle state, historical preservation, generated data, tests, build, and visible browser impact.
-- Correct an automation PR on its existing branch. Never bypass the PR, enable auto-merge, or directly commit submitted records to `main`.
-- Supabase is synchronization/workflow infrastructure, not a competing canonical journal. Preserve immutable payloads and PR audit history.
+- This public repository contains only the application shell, browser-safe cloud client, infrastructure source, branding, documentation, and unmistakably empty/synthetic fixtures.
+- Never add canonical Markdown, trade theses, real account values, private research, emotional notes, attachments, payloads, or generated journal JSON here.
+- Canonical records and formalization workflows belong in private `dkyaya/OJ-Journal`.
+- Never access brokerage credentials, connect to Robinhood, place trades, invent fills, or mark a trade entered/closed without explicit user confirmation.
+- Preserve the manual private-PR merge gate. Never enable auto-merge.
+- Every meaningful frontend change requires lint, typecheck, tests, build, privacy scan, and desktop/mobile browser review with synthetic or empty data.
+- Edge Functions must use owner/approval checks, origin-restricted CORS, input limits, redacted errors, short-lived GitHub App tokens, and trusted transactional RPCs.

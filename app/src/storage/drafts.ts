@@ -66,3 +66,12 @@ export async function clearDraft(id: string) {
     request.onerror = () => reject(request.error);
   });
 }
+
+export async function clearAllDrafts() {
+  const db = await open();
+  return new Promise<void>((resolve, reject) => {
+    const request = db.transaction(store, 'readwrite').objectStore(store).clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}

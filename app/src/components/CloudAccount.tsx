@@ -3,7 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { Cloud, LogIn, LogOut } from 'lucide-react';
 import { cloudConfigured, supabase } from '../lib/supabase';
 import { cloudRowToDraft, hydrateCloud, syncDraft } from '../storage/cloud';
-import { listDrafts, saveDraft, type Draft } from '../storage/drafts';
+import { clearAllDrafts, listDrafts, saveDraft, type Draft } from '../storage/drafts';
 
 type Conflict = { local: Draft; remote: Draft };
 
@@ -60,7 +60,21 @@ export function CloudAccount() {
 
   useEffect(() => {
     supabase?.auth.getUser().then((result) => setUser(result.data.user));
-    const subscription = supabase?.auth.onAuthStateChange((_, session) => setUser(session?.user || null));
+    const subscription = supabase?.auth.onAuthStateChange((event, session) => {
+      const next = session?.user || null;
+      if (next) {
+        const previous = localStorage.getItem('oj-cache-owner');
+        if (previous && previous !== next.id) void clearAllDrafts();
+        localStorage.setItem('oj-cache-owner', next.id);
+      }
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('oj-cache-owner');
+        void clearAllDrafts().then(() => window.dispatchEvent(new Event('oj-drafts-updated')));
+        if ('caches' in window) void caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))));
+      }
+      setUser(next);
+      window.dispatchEvent(new Event('oj-cloud-workspace-updated'));
+    });
     return () => subscription?.data.subscription.unsubscribe();
   }, []);
 
@@ -96,6 +110,7 @@ export function CloudAccount() {
     setConflicts(found);
     setMessage(found.length ? `${found.length} conflict(s) need a decision.` : cloud.length ? `${cloud.length} cloud draft(s) are current on this device.` : 'Cloud connected; no drafts yet.');
     window.dispatchEvent(new Event('oj-drafts-updated'));
+    window.dispatchEvent(new Event('oj-cloud-workspace-updated'));
   };
 
   useEffect(() => {
@@ -161,7 +176,7 @@ export function CloudAccount() {
             <>
               <p>Signed in as {user.email}. Approved drafts synchronize across devices.</p>
               <button onClick={hydrate}>Refresh cloud</button>
-              <button onClick={() => supabase?.auth.signOut()}>
+              <button onClick={() => supabase?.auth.signOut({ scope: 'local' })}>
                 <LogOut size={15} /> Sign out
               </button>
             </>

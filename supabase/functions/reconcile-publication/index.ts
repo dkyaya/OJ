@@ -1,81 +1,64 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const safe = (left: string, right: string) => {
-  if (!left || !right || left.length !== right.length) return false;
+const encoder = new TextEncoder();
+const hex = (bytes: ArrayBuffer) => Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+const timingSafe = (left: string, right: string) => {
+  if (!/^[0-9a-f]{64}$/i.test(left) || left.length !== right.length) return false;
   let difference = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
+  for (let index = 0; index < left.length; index += 1) difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
   return difference === 0;
 };
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+});
 
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
-  const given = req.headers.get('x-oj-webhook-secret') || '';
-  const expected = Deno.env.get('OJ_FORMALIZATION_WEBHOOK_SECRET') || '';
-  if (!safe(given, expected)) return new Response('unauthorized', { status: 401 });
+  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+  const declared = Number(req.headers.get('content-length') || 0);
+  if (declared > 550_000) return json({ error: 'request_too_large' }, 413);
+  const raw = await req.text();
+  if (encoder.encode(raw).byteLength > 550_000) return json({ error: 'request_too_large' }, 413);
+  const timestamp = req.headers.get('x-oj-timestamp') || '';
+  const nonce = req.headers.get('x-oj-nonce') || '';
+  const signature = req.headers.get('x-oj-signature') || '';
+  const occurredAt = Number(timestamp);
+  if (!Number.isInteger(occurredAt) || Math.abs(Date.now() / 1000 - occurredAt) > 300) return json({ error: 'stale_callback' }, 401);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(nonce)) return json({ error: 'invalid_nonce' }, 401);
+  const secret = Deno.env.get('OJ_FORMALIZATION_WEBHOOK_SECRET') || '';
+  if (!secret) return json({ error: 'server_configuration_incomplete' }, 503);
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const expected = hex(await crypto.subtle.sign('HMAC', key, encoder.encode(`${timestamp}.${nonce}.${raw}`)));
+  if (!timingSafe(signature, expected)) return json({ error: 'invalid_signature' }, 401);
 
-  const body = await req.json().catch(() => ({}));
-  if (!body.job_id || !body.commit_sha) return new Response('invalid', { status: 400 });
+  let body: Record<string, unknown>;
+  try { body = JSON.parse(raw); } catch { return json({ error: 'invalid_json' }, 400); }
+  const keys = ['job_id','payload_revision','pr_number','pr_url','branch','commit_sha','note_path','payload_hash','canonical_record'];
+  if (Object.keys(body).some((keyName) => !keys.includes(keyName))) return json({ error: 'invalid_schema' }, 400);
+  if (!/^[0-9a-f-]{36}$/i.test(String(body.job_id || '')) || !Number.isInteger(body.payload_revision) || !Number.isInteger(body.pr_number)) return json({ error: 'invalid_schema' }, 400);
+  if (!/^https:\/\/github\.com\/dkyaya\/OJ-Journal\/pull\/[1-9][0-9]*$/.test(String(body.pr_url || ''))) return json({ error: 'invalid_pr_url' }, 400);
+  if (!body.canonical_record || typeof body.canonical_record !== 'object' || Array.isArray(body.canonical_record)) return json({ error: 'invalid_canonical_record' }, 400);
 
   const url = Deno.env.get('SUPABASE_URL');
-  const secret = Deno.env.get('SUPABASE_SECRET_KEY');
-  if (!url || !secret) return new Response('server configuration incomplete', { status: 503 });
-  const db = createClient(url, secret);
-  const { data: job } = await db.from('formalization_jobs').select('*').eq('id', body.job_id).single();
-  if (!job?.note_path) return new Response('not found', { status: 404 });
-
-  const now = new Date().toISOString();
-  const { error: jobError } = await db
-    .from('formalization_jobs')
-    .update({
-      status: 'published',
-      pr_number: body.pr_number,
-      pr_url: body.pr_url,
-      branch: body.branch,
-      updated_at: now,
-    })
-    .eq('id', job.id);
-  if (jobError) return new Response('job update failed', { status: 500 });
-
-  const { data: published, error: publishedError } = await db
-    .from('published_records')
-    .upsert(
-      {
-        user_id: job.user_id,
-        record_type: job.record_type,
-        record_id: job.record_id,
-        note_path: job.note_path,
-        commit_sha: body.commit_sha,
-        pr_number: body.pr_number,
-        merged_at: now,
-      },
-      { onConflict: 'record_type,record_id' },
-    )
-    .select('id')
-    .single();
-  if (publishedError || !published) return new Response('publication update failed', { status: 500 });
-
-  const tables: Record<string, string> = {
-    trade_idea: 'trade_ideas',
-    trade_entry: 'trade_entries',
-    trade_checkin: 'trade_checkins',
-    trade_exit: 'trade_exits',
-    journal_review: 'journal_reviews',
-    catalyst: 'catalysts',
-    research_annotation: 'research_annotations',
-  };
-  const table = tables[job.record_type];
-  if (!table) return new Response('unsupported record type', { status: 400 });
-  const update: Record<string, unknown> = { sync_status: 'published', updated_at: now };
-  if (table === 'trade_ideas') {
-    update.published_record_id = published.id;
-    update.published_commit_sha = body.commit_sha;
-    update.published_note_path = job.note_path;
-    update.last_published_at = now;
+  const secretKey = Deno.env.get('SUPABASE_SECRET_KEY');
+  if (!url || !secretKey) return json({ error: 'server_configuration_incomplete' }, 503);
+  const db = createClient(url, secretKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data, error } = await db.rpc('reconcile_formalization_publication', {
+    p_job_id: body.job_id,
+    p_payload_revision: body.payload_revision,
+    p_pr_number: body.pr_number,
+    p_pr_url: body.pr_url,
+    p_branch: body.branch,
+    p_commit_sha: body.commit_sha,
+    p_note_path: body.note_path,
+    p_payload_hash: body.payload_hash,
+    p_canonical_record: body.canonical_record,
+    p_nonce: nonce,
+    p_occurred_at: new Date(occurredAt * 1000).toISOString(),
+  });
+  if (error) {
+    console.error('atomic_reconciliation_rejected');
+    const replay = error.message?.includes('reconciliation_nonces_pkey');
+    return json({ error: replay ? 'replayed_callback' : 'reconciliation_rejected' }, replay ? 409 : 422);
   }
-  const { error: recordError } = await db.from(table).update(update).eq('id', job.record_id).eq('user_id', job.user_id);
-  if (recordError) return new Response('record update failed', { status: 500 });
-
-  return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });
+  return json(data);
 });

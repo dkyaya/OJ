@@ -1,15 +1,24 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { App } from 'npm:octokit@5.0.5';
 
-const cors = {
-  'access-control-allow-origin': '*',
+const allowedOrigins = new Set([
+  Deno.env.get('OJ_ALLOWED_ORIGIN') || 'https://dkyaya.github.io',
+  'http://localhost:5173',
+]);
+const corsFor = (req: Request) => {
+  const origin = req.headers.get('origin');
+  return {
+  ...(origin && allowedOrigins.has(origin) ? { 'access-control-allow-origin': origin } : {}),
   'access-control-allow-headers': 'apikey, authorization, content-type, x-client-info',
   'access-control-allow-methods': 'POST, OPTIONS',
+  'vary': 'origin',
+  };
 };
 
-const json = (body: unknown, status = 200) =>
+const json = (req: Request, body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...cors, 'content-type': 'application/json' },
+    headers: { ...corsFor(req), 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
 
 const sha256 = async (value: string) =>
@@ -22,23 +31,30 @@ const sha256 = async (value: string) =>
     );
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  const origin = req.headers.get('origin');
+  if (origin && !allowedOrigins.has(origin)) return new Response('forbidden origin', { status: 403 });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsFor(req) });
 
   try {
-    if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+    if (req.method !== 'POST') return json(req, { error: 'method_not_allowed' }, 405);
+    const length = Number(req.headers.get('content-length') || 0);
+    if (length > 4096) return json(req, { error: 'request_too_large' }, 413);
 
     const auth = req.headers.get('authorization');
-    if (!auth) return json({ error: 'authentication_required' }, 401);
+    if (!auth) return json(req, { error: 'authentication_required' }, 401);
 
     const url = Deno.env.get('SUPABASE_URL');
     const backendSecret = Deno.env.get('SUPABASE_SECRET_KEY');
     const publishableKey = Deno.env.get('SUPABASE_ANON_KEY');
-    const githubToken = Deno.env.get('GITHUB_OJ_TOKEN');
-    const repo = Deno.env.get('GITHUB_REPOSITORY') || 'dkyaya/OJ';
-    const workflow = Deno.env.get('GITHUB_FORMALIZATION_WORKFLOW') || 'formalize-oj-record.yml';
-    if (!url || !backendSecret || !publishableKey || !githubToken) {
-      return json({ error: 'server_configuration_incomplete' }, 503);
+    const appId = Deno.env.get('OJ_GITHUB_APP_ID');
+    const installationId = Number(Deno.env.get('OJ_GITHUB_APP_INSTALLATION_ID'));
+    const privateKey = (Deno.env.get('OJ_GITHUB_APP_PRIVATE_KEY') || '').replaceAll('\\n', '\n');
+    const repo = Deno.env.get('OJ_PRIVATE_REPOSITORY') || 'dkyaya/OJ-Journal';
+    const workflow = Deno.env.get('OJ_FORMALIZATION_WORKFLOW') || 'formalize-oj-record.yml';
+    if (!url || !backendSecret || !publishableKey || !appId || !Number.isInteger(installationId) || !privateKey) {
+      return json(req, { error: 'server_configuration_incomplete' }, 503);
     }
+    if (repo !== 'dkyaya/OJ-Journal' || workflow !== 'formalize-oj-record.yml') return json(req, { error: 'server_target_invalid' }, 503);
 
     const userClient = createClient(url, publishableKey, {
       global: { headers: { Authorization: auth } },
@@ -46,7 +62,7 @@ Deno.serve(async (req) => {
     const {
       data: { user },
     } = await userClient.auth.getUser();
-    if (!user) return json({ error: 'authentication_required' }, 401);
+    if (!user) return json(req, { error: 'authentication_required' }, 401);
 
     const admin = createClient(url, backendSecret);
     const { data: profile } = await admin
@@ -54,14 +70,23 @@ Deno.serve(async (req) => {
       .select('approved')
       .eq('id', user.id)
       .single();
-    if (!profile?.approved) return json({ error: 'not_allowlisted' }, 403);
+    if (!profile?.approved) return json(req, { error: 'not_allowlisted' }, 403);
 
-    const body = await req.json();
+    const recent = await admin
+      .from('formalization_jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
+    if ((recent.count || 0) >= 10) return json(req, { error: 'rate_limited' }, 429);
+
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 4096) return json(req, { error: 'request_too_large' }, 413);
+    const body = JSON.parse(rawBody);
     const recordId = String(body.record_id || '');
     const recordType = String(body.record_type || 'trade_idea');
     const revision = Number(body.revision);
-    if (!recordId || !Number.isInteger(revision) || revision < 1) {
-      return json({ error: 'invalid_submission' }, 400);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(recordId) || !Number.isInteger(revision) || revision < 1 || Object.keys(body).some((key) => !['record_id','record_type','revision'].includes(key))) {
+      return json(req, { error: 'invalid_submission' }, 400);
     }
 
     const tables: Record<string, string> = {
@@ -74,7 +99,7 @@ Deno.serve(async (req) => {
       research_annotation: 'research_annotations',
     };
     const table = tables[recordType] || null;
-    if (!table) return json({ error: 'unsupported_record_type' }, 400);
+    if (!table) return json(req, { error: 'unsupported_record_type' }, 400);
 
     const { data: record } = await admin
       .from(table)
@@ -82,9 +107,9 @@ Deno.serve(async (req) => {
       .eq('id', recordId)
       .eq('user_id', user.id)
       .single();
-    if (!record) return json({ error: 'record_not_found' }, 404);
+    if (!record) return json(req, { error: 'record_not_found' }, 404);
     if (record.revision !== revision) {
-      return json({ error: 'revision_conflict', cloud_revision: record.revision }, 409);
+      return json(req, { error: 'revision_conflict', cloud_revision: record.revision }, 409);
     }
 
     let parent: Record<string, unknown> | null = null;
@@ -96,6 +121,7 @@ Deno.serve(async (req) => {
         .eq('user_id', user.id)
         .single();
       parent = parentResult.data;
+      if (!parent) return json(req, { error: 'parent_not_found' }, 409);
     }
     const snapshot = {
       ...record,
@@ -108,33 +134,27 @@ Deno.serve(async (req) => {
       .select('id,status')
       .eq('idempotency_key', idempotencyKey)
       .maybeSingle();
-    if (existing.data) {
-      return json({ job_id: existing.data.id, status: existing.data.status, reused: true });
-    }
-
-    const { data: job, error: jobError } = await admin
-      .from('formalization_jobs')
-      .insert({
-        user_id: user.id,
-        record_type: recordType,
-        record_id: recordId,
-        payload_revision: revision,
-        idempotency_key: idempotencyKey,
-        status: 'formalization_pending',
-      })
-      .select('id,status')
-      .single();
-    if (jobError || !job) throw jobError || new Error('job_creation_failed');
-
-    const { error: payloadError } = await admin.from('formalization_payloads').insert({
-      job_id: job.id,
-      user_id: user.id,
-      payload: snapshot,
-      payload_hash: payloadHash,
-    });
-    if (payloadError) {
-      await admin.from('formalization_jobs').update({ status: 'failed', error: 'payload_snapshot_failed' }).eq('id', job.id);
-      throw new Error('payload_snapshot_failed');
+    let job = existing.data;
+    if (job && job.status !== 'failed') return json(req, { job_id: job.id, status: job.status, reused: true });
+    if (!job) {
+      const created = await admin.from('formalization_jobs').insert({
+          user_id: user.id, record_type: recordType, record_id: recordId, payload_revision: revision,
+          payload_hash: payloadHash, idempotency_key: idempotencyKey, status: 'formalization_pending',
+        }).select('id,status').single();
+      if (created.error || !created.data) {
+        const raced = await admin.from('formalization_jobs').select('id,status').eq('idempotency_key', idempotencyKey).maybeSingle();
+        if (!raced.data) throw new Error('job_creation_failed');
+        job = raced.data;
+      } else job = created.data;
+      const { error: payloadError } = await admin.from('formalization_payloads').insert({
+        job_id: job.id, user_id: user.id, payload: snapshot, payload_hash: payloadHash,
+      });
+      if (payloadError) {
+        await admin.from('formalization_jobs').update({ status: 'failed', error: 'payload_snapshot_failed' }).eq('id', job.id);
+        throw new Error('payload_snapshot_failed');
+      }
+    } else {
+      await admin.from('formalization_jobs').update({ status: 'formalization_pending', error: null }).eq('id', job.id).eq('user_id', user.id);
     }
 
     const submissionUpdate: Record<string, unknown> = {
@@ -148,30 +168,25 @@ Deno.serve(async (req) => {
       .eq('id', recordId)
       .eq('user_id', user.id);
 
-    const dispatch = await fetch(
-      `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`,
-      {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${githubToken}`,
-          accept: 'application/vnd.github+json',
-          'content-type': 'application/json',
-          'x-github-api-version': '2022-11-28',
-        },
-        body: JSON.stringify({ ref: 'main', inputs: { job_id: job.id } }),
-      },
-    );
-    if (!dispatch.ok) {
+    const [owner, repository] = repo.split('/');
+    const app = new App({ appId, privateKey });
+    const octokit = await app.getInstallationOctokit(installationId);
+    try {
+      await octokit.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
+        owner, repo: repository, workflow_id: workflow, ref: 'main', inputs: { job_id: job.id },
+        headers: { 'x-github-api-version': '2026-03-10' },
+      });
+    } catch {
       await admin
         .from('formalization_jobs')
-        .update({ status: 'failed', error: `dispatch_${dispatch.status}` })
+        .update({ status: 'failed', error: 'dispatch_failed' })
         .eq('id', job.id);
-      return json({ error: 'workflow_dispatch_failed', job_id: job.id }, 502);
+      return json(req, { error: 'workflow_dispatch_failed', job_id: job.id }, 502);
     }
 
-    return json({ job_id: job.id, status: 'formalization_pending' }, 202);
+    return json(req, { job_id: job.id, status: 'formalization_pending' }, 202);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : 'unknown_submission_error');
-    return json({ error: 'submission_failed' }, 500);
+    console.error(error instanceof SyntaxError ? 'invalid_json' : 'submission_error');
+    return json(req, { error: error instanceof SyntaxError ? 'invalid_json' : 'submission_failed' }, error instanceof SyntaxError ? 400 : 500);
   }
 });

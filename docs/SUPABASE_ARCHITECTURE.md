@@ -1,6 +1,6 @@
 # Supabase architecture
 
-Supabase stores owner-scoped drafts, revisions, immutable submission payloads, jobs, synchronization events, and publication references. Canonical trade history remains Obsidian Markdown after manual pull-request merge. The browser uses only the project API URL and publishable key; backend credentials exist only in Edge Function or GitHub secrets.
+Supabase stores owner-scoped drafts, revisions, immutable submission payloads, jobs, synchronization events, and the owner-visible normalized representation of a merged canonical note. Canonical trade history remains private Obsidian Markdown after manual merge in `dkyaya/OJ-Journal`. The browser uses only the project API URL and publishable key; backend credentials exist only in Edge Function or private GitHub secrets.
 
 ## Authentication and allowlist
 
@@ -14,10 +14,12 @@ Apply every file under `supabase/migrations/` in timestamp order, then deploy:
 
 - `submit-formalization` with JWT verification;
 - `formalization-status` with JWT verification;
-- `reconcile-publication` without gateway JWT because it performs its own constant-time webhook-secret check.
+- `reconcile-publication` without gateway JWT because it validates a timestamped, nonce-protected HMAC request and invokes one trusted transactional RPC.
 
 For local development, install the Supabase CLI, run `supabase start`, `supabase db reset`, and `supabase test db`. Link and push to production only with management credentials stored outside source. Production migrations and function versions are also reproducible through `.github/workflows/deploy-supabase.yml` once its optional deployment secrets are configured.
 
 ## Canonical boundary
 
-Supabase is synchronization and workflow infrastructure, not a second journal. Published commit SHA and note path point back to the canonical repository file. Immutable payload snapshots and pull requests preserve the audit trail.
+The public schema is explicitly exposed only where the browser needs it. Authenticated clients may read/insert/update approved owner drafts, read their profile, job status, and published normalized records, but cannot delete or mutate workflow state. Composite foreign keys bind every trade child to the same `(trade_idea_id,user_id)` owner. Server-only payloads and sync events have no browser grants/policies.
+
+Supabase is synchronization and publication infrastructure, not a second Markdown journal. Published commit SHA and note path point to the private canonical file. Ordinary publication updates Supabase atomically and never triggers a public Pages build.

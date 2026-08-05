@@ -1,10 +1,10 @@
 # RLS security
 
-Every public user-data table has RLS enabled. Editable browser rows require `(select auth.uid()) = user_id` and the private approved-profile helper. Formalization jobs, immutable payloads, sync events, and publication references are browser read-only for their owner. Anonymous users have no journal policies.
+Every exposed user-data table has RLS enabled. Policies explicitly target `authenticated`, require a non-null `(select auth.uid())`, direct ownership, server-controlled approval, and parent ownership where applicable. Composite foreign keys enforce `(trade_idea_id,user_id) -> trade_ideas(id,user_id)`. Formalization jobs and published records are owner read-only; immutable payloads and trusted sync events are server-only. Anonymous users have no table grants or journal policies.
 
 Database triggers add defense in depth:
 
-- a profile cannot approve itself;
+- browser clients cannot update a profile or approve themselves;
 - ownership cannot be transferred;
 - publication fields are trusted-only;
 - browser writes may produce only `cloud_draft`;
@@ -12,6 +12,6 @@ Database triggers add defense in depth:
 - browser deletion is disabled;
 - trusted workflows control submission, PR, merge, and publication states.
 
-The allowlist helper lives in an unexposed schema and is not executable by anonymous users. Production Supabase security advisors report zero findings after the hardening migrations.
+The allowlist helper uses a safe empty search path, lives in an unexposed schema, and is not executable by anonymous users. Every security-definer function has explicit permissions and a safe search path. No Storage buckets or Realtime publication tables are required in this version.
 
-Run `supabase test db` against a local project to execute `supabase/tests/rls.sql`. The test suite checks explicit RLS, hidden helpers, missing delete policies, self-approval protection, and the browser state guard. A safe two-user staging pass should additionally exercise owner reads, non-owner denial, forged inserts, ownership mutation, soft deletion, and privileged job transitions before multi-user access is ever enabled.
+The production-safe behavioral test uses synthetic users inside a rolled-back transaction and exercises real RLS as `authenticated`: owner access, cross-owner denial, forged ownership, child-parent mismatch, ownership mutation, self-approval, deletion denial, server-only records, and anonymous denial. See `artifacts/security/two-user-rls-test.md`.
