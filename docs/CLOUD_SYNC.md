@@ -9,6 +9,6 @@ Cloud updates use compare-and-swap on the previous revision. If another device i
 - duplicate local;
 - compare every field and manually merge.
 
-Visible states include saved locally, syncing, synced, offline, retry needed, outdated, conflict, submitted, PR open, and published. A paused or unreachable project leaves the local copy and emergency packet intact.
+Visible states are Local Draft, Saving, Saved to OJ, Saved Offline, Retry Needed, and Conflict. A paused or unreachable project leaves the local copy and emergency packet intact.
 
-Submitted snapshots are immutable. Later editing creates a newer cloud revision without replacing the payload attached to an existing private pull request. Logout or account change clears the owner-scoped IndexedDB/cache before another account can hydrate.
+Supabase rows use monotonic revisions, and `record_revisions` preserves snapshots. Logout or account change clears the owner-scoped IndexedDB cache before another account can hydrate. Optional Markdown mirroring is separate from normal saves.

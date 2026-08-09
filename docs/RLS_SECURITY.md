@@ -1,6 +1,6 @@
 # RLS security
 
-Every exposed user-data table has RLS enabled. Policies explicitly target `authenticated`, require a non-null `(select auth.uid())`, direct ownership, server-controlled approval, and parent ownership where applicable. Composite foreign keys enforce `(trade_idea_id,user_id) -> trade_ideas(id,user_id)`. Formalization jobs and published records are owner read-only; immutable payloads and trusted sync events are server-only. Anonymous users have no table grants or journal policies.
+Every exposed user-data table has RLS enabled. Policies explicitly target `authenticated`, require a non-null `(select auth.uid())`, direct ownership, server-controlled approval, and parent ownership where applicable. Composite foreign keys enforce same-owner parent/child relationships. Confirmed positions are read-only to browser table access and are created through the validated entry RPC. Optional formalization jobs and mirror records are owner read-only; immutable payloads and trusted sync events are server-only. Anonymous users have no table grants or journal policies.
 
 Database triggers add defense in depth:
 

@@ -1,24 +1,25 @@
-# OJ — Options Journey public application
+# OJ — Options Journey
 
-OJ is a public, static React application shell for a private options-research journal. It is not a brokerage, never receives brokerage credentials, and cannot place trades.
+OJ is a private-by-default options research and journaling application delivered from a public static frontend. Supabase is the canonical datastore. OJ is not a brokerage, never receives brokerage credentials, and cannot place trades.
 
 ## Privacy boundary
 
-This repository contains frontend code, branding, browser-safe Supabase configuration, schema/migrations, Edge Functions, tests, and empty demo fixtures. Canonical Markdown, trade theses, journal entries, research, attachments, emotional notes, real account values, immutable payloads, and formalization branches live only in the private `dkyaya/OJ-Journal` repository or owner-scoped Supabase rows.
+This repository contains frontend code, branding, browser-safe Supabase configuration, schema migrations, Edge Functions, tests, and synthetic demo fixtures. Real trade theses, journal entries, research, attachments, emotional notes, account values, and exports never belong in public history.
 
-`IndexedDB cache ↔ approved owner Supabase drafts → private OJ-Journal PR → manual merge → atomic owner-visible publication`
+`IndexedDB offline cache ↔ approved owner rows in Supabase`
 
-Ordinary journal publication never commits to this repository and never rebuilds GitHub Pages.
+An Obsidian-compatible Markdown export and the private `dkyaya/OJ-Journal` repository remain optional mirrors. Ordinary saves never create a Git commit or rebuild GitHub Pages.
 
 ## Local checks
 
-From `app/`, run `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and `npm run privacy:check`.
+From `app/`, run `npm ci`, `npm run copy:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and `npm run privacy:check`.
 
 ## Owner workflow
 
-1. Create or edit a local draft. OJ saves immediately in IndexedDB and syncs the exact revision after approved sign-in.
-2. Resolve any device conflict explicitly.
-3. Submit the synchronized revision. A GitHub App dispatches a private formalization workflow.
-4. Automatic private checks and Codex review run on that PR.
-5. The owner manually merges. A signed callback invokes one transactional publication RPC.
-6. OJ loads the canonical normalized record from Supabase without a Pages deployment.
+1. Sign in with an approved account.
+2. Create or edit research. OJ keeps an offline IndexedDB copy and saves the same revision to Supabase.
+3. Resolve a multi-device conflict explicitly if both copies changed.
+4. Record an entry only after confirming a real fill. The transactional entry operation creates the position and updates the idea together.
+5. Export one record or a full Obsidian-compatible journal whenever a Markdown copy is useful.
+
+See `docs/NAVIGATION_ARCHITECTURE.md`, `docs/SUPABASE_CANONICAL_MODEL.md`, and `docs/OBSIDIAN_EXPORT.md` for the current architecture.

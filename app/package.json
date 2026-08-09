@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "tsc -b && vite build",
-    "privacy:check": "node ../scripts/check-public-privacy.mjs"
+    "privacy:check": "node ../scripts/check-public-privacy.mjs",
+    "copy:check": "node ../scripts/check-ui-copy.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.0",
