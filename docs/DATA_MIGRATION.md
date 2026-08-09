@@ -4,4 +4,6 @@ The one-time importer lives in the private `OJ-Journal` repository because its i
 
 Migration order is account policy, catalysts, ideas, candidates, annotations, trades, and journal records. `TBD`, watchlist/deferred state, and `user_confirmed_fill: false` are preserved literally. The importer never converts a planned idea into a position.
 
-An approved Supabase owner ID is mandatory. If no owner exists, run only the dry report and stop. Never invent an auth identity or use the public repository as a staging area for private payloads.
+The production owner migration is complete and reconciled. The expected policy, two planned/deferred ideas, five candidates, eight catalysts, and five mappings are present with provenance and without any trade, entry, request, or confirmed fill. The private report lives at `OJ-Journal/artifacts/migration/phase-4-5-owner-cutover.md`; no real source payload or owner UUID is copied into this public repository.
+
+Future migrations still require an existing approved owner ID. Never invent an auth identity, re-import duplicate records, or use the public repository as a staging area for private payloads.

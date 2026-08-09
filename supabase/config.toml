@@ -8,5 +8,7 @@ additional_redirect_urls = ["http://localhost:5173/**", "https://dkyaya.github.i
 verify_jwt = true
 [functions.formalization-status]
 verify_jwt = true
+[functions.invite-account]
+verify_jwt = true
 [functions.reconcile-publication]
 verify_jwt = false

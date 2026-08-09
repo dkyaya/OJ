@@ -10,15 +10,16 @@ const optionalInteger = (value: string) => Number.isInteger(Number(value)) && Nu
 const lines = (value: string) => value.split(/\n|,/).map((item) => item.trim()).filter(Boolean);
 const uuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
-export function cloudRowToDraft(row: Record<string, unknown>): Draft {
-  return { id: String(row.id), kind: 'trade_idea', data: (row.data as Record<string, string>) || {}, updatedAt: String(row.updated_at), sync: 'canonical', cloudRevision: Number(row.revision), cloudUpdatedAt: String(row.updated_at) };
+export function cloudRowToDraft(row: Record<string, unknown>, ownerId: string): Draft {
+  return { id: String(row.id), ownerId, kind: 'trade_idea', data: (row.data as Record<string, string>) || {}, updatedAt: String(row.updated_at), sync: 'canonical', cloudRevision: Number(row.revision), cloudUpdatedAt: String(row.updated_at) };
 }
 
-async function owner() {
+async function owner(expectedOwnerId: string) {
   if (!supabase) return null;
   const { data: { user } } = await supabase.auth.getUser(); if (!user) return null;
-  const profile = await supabase.from('profiles').select('approved').eq('id', user.id).maybeSingle();
-  return profile.data?.approved ? user : null;
+  if (user.id !== expectedOwnerId) return null;
+  const profile = await supabase.from('profiles').select('approved,account_status').eq('id', user.id).maybeSingle();
+  return profile.data?.approved && profile.data.account_status === 'active' ? user : null;
 }
 
 async function saveCatalyst(draft: Draft, userId: string, catalystId: string) {
@@ -60,7 +61,7 @@ async function saveCandidate(draft: Draft, userId: string, revision: number) {
 export async function syncDraft(draft: Draft): Promise<CloudResult> {
   if (!cloudConfigured || !supabase) return { state: 'local', draft: { ...draft, sync: 'local' }, message: 'Saved on this device. Cloud is not configured.' };
   if (!navigator.onLine) { const offline = { ...draft, sync: 'offline' as const }; await queueOperation(offline); return { state: 'local', draft: offline, message: 'Saved offline. OJ will retry when connected.' }; }
-  const user = await owner();
+  const user = await owner(draft.ownerId);
   if (!user) return { state: 'rejected', draft: { ...draft, sync: 'local' }, message: 'Sign in with an approved account to save to OJ.' };
   const remote = await supabase.from('trade_ideas').select('*').eq('id', draft.id).maybeSingle();
   if (remote.error) return { state: 'error', draft: { ...draft, sync: 'retry' }, message: remote.error.message };
@@ -94,20 +95,20 @@ export async function syncDraft(draft: Draft): Promise<CloudResult> {
   }
   await saveCandidate({ ...draft, data: recordedData }, user.id, revision);
   const canonical = { ...draft, data: recordedData, sync: 'canonical' as const, cloudRevision: revision, cloudUpdatedAt: String(saved.data.updated_at), updatedAt: String(saved.data.updated_at) };
-  await saveDraft(canonical); await removeOperation(`save:${draft.id}`).catch(() => undefined);
+  await saveDraft(canonical); await removeOperation(draft.ownerId, draft.id).catch(() => undefined);
   return { state: 'canonical', draft: canonical, cloud: saved.data, message: 'Saved to OJ.' };
 }
 
-export async function flushPendingOperations() {
-  const operations = await listOperations();
+export async function flushPendingOperations(ownerId: string) {
+  const operations = await listOperations(ownerId);
   for (const operation of operations) {
-    const result = await syncDraft(operation.payload); if (result.state === 'canonical') await removeOperation(operation.id);
+    const result = await syncDraft(operation.payload); if (result.state === 'canonical') await removeOperation(ownerId, operation.recordId);
   }
 }
 
-export async function hydrateCloud() {
+export async function hydrateCloud(ownerId: string) {
   if (!supabase) return [];
-  const user = await owner(); if (!user) return [];
+  const user = await owner(ownerId); if (!user) return [];
   const { data, error } = await supabase.from('trade_ideas').select('*').is('deleted_at', null).order('updated_at', { ascending: false });
   if (error) throw error; return data || [];
 }
