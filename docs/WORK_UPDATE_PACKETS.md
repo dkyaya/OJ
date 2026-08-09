@@ -1,3 +1,3 @@
 # Work Update Packets
 
-Packets are copyable Markdown requests for Codex. They contain only user-entered decision records, calculated/missing states, and requested Markdown updates—never credentials or brokerage instructions. A packet requires explicit user confirmation before it asks Codex to mark an entry or exit as actual.
+Packets are the emergency fallback when Auth, cloud synchronization, Edge Functions, or GitHub automation is unavailable. They contain user-entered decision records, cloud/job identifiers when present, calculated/missing states, and requested Markdown updates—never credentials or brokerage instructions. Actual entry/exit changes require explicit confirmation.

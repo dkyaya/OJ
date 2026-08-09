@@ -1,0 +1,19 @@
+import { ArrowRight, Plus } from 'lucide-react';
+import { MetricCard, SummaryCard, EmptyCard } from '../components/cards';
+import { navigate } from '../config/navigation';
+import type { Workspace } from '../types/domain';
+import { PageHeader } from '../components/layout/AppShell';
+
+export function OverviewPage({ workspace, onBuildIdea }: { workspace: Workspace; onBuildIdea: () => void }) {
+  const active = workspace.positions.filter((item) => item.status === 'active'); const openRisk = active.reduce((sum, item) => sum + (item.maxRisk || 0), 0);
+  const available = workspace.policy ? Math.max(0, workspace.policy.maximumOpenRisk - openRisk) : undefined;
+  const upcoming = workspace.catalysts.filter((item) => item.date && item.date >= new Date().toISOString().slice(0, 10)).slice(0, 4);
+  const drafts = workspace.ideas.filter((item) => ['draft','watchlist','ready'].includes(item.status)).slice(0, 3);
+  return <div className="page"><PageHeader title="Overview" subtitle="Risk, trades, and upcoming events." action={<button className="primary" onClick={onBuildIdea}><Plus size={17} />Build Idea</button>} />
+    <section className="metric-grid" aria-label="Account summary"><MetricCard title="Open Risk" value={`$${openRisk.toFixed(2)}`} subtitle="Maximum loss across open positions." /><MetricCard title="Risk Available" value={available === undefined ? 'TBD' : `$${available.toFixed(2)}`} subtitle="Remaining portfolio-risk capacity." /><MetricCard title="Active Trades" value={active.length} subtitle="Confirmed open positions." /><MetricCard title="Pending Reviews" value={workspace.pendingReviews} subtitle="Closed trades awaiting review." /></section>
+    <div className="dashboard-grid"><section><div className="section-heading"><div><h2>Active Trades</h2><p>Confirmed positions requiring attention.</p></div><button className="text-button" onClick={() => navigate('/trades')}>View Trades <ArrowRight size={15} /></button></div>{active.length ? <div className="card-list">{active.slice(0, 3).map((trade) => <SummaryCard key={trade.id} title={trade.ticker} subtitle={trade.strategy} status="Active" metric={trade.maxRisk === undefined ? 'Risk TBD' : `$${trade.maxRisk.toFixed(2)} risk`} meta={`${trade.contracts} contract${trade.contracts === 1 ? '' : 's'}`} />)}</div> : <EmptyCard title="No Active Trades" subtitle="Confirmed entries will appear here." />}</section>
+      <section><div className="section-heading"><div><h2>Upcoming Catalysts</h2><p>The next scheduled events.</p></div><button className="text-button" onClick={() => navigate('/catalysts')}>View Catalysts <ArrowRight size={15} /></button></div>{upcoming.length ? <div className="card-list">{upcoming.map((item) => <SummaryCard key={item.id} title={item.event} subtitle={item.type} status={item.sensitivity || 'TBD'} metric={item.date} meta={item.linkedTickers.join(', ') || 'No mapping'} />)}</div> : <EmptyCard title="No Upcoming Events" subtitle="Add a scheduled catalyst to begin research." />}</section>
+    </div>
+    <section><div className="section-heading"><div><h2>Draft Ideas</h2><p>Research that may need a decision.</p></div><button className="text-button" onClick={() => navigate('/ideas')}>View Ideas <ArrowRight size={15} /></button></div>{drafts.length ? <div className="three-grid">{drafts.map((idea) => <SummaryCard key={idea.id} title={idea.ticker} subtitle={idea.strategy} status={idea.status} metric={idea.risk === undefined ? 'Risk TBD' : `$${idea.risk.toFixed(2)} risk`} meta={`Updated ${new Date(idea.updatedAt).toLocaleDateString()}`} />)}</div> : <EmptyCard title="No Draft Ideas" subtitle="Build an idea from a ticker or catalyst." action={<button onClick={onBuildIdea}>Build Idea</button>} />}</section>
+  </div>;
+}

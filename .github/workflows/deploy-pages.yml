@@ -28,9 +28,30 @@ jobs:
       - name: Install dependencies
         working-directory: app
         run: npm ci
-      - name: Validate and build
+      - name: Lint
         working-directory: app
-        run: npm run validate:data && npm run data:build && npm run typecheck && npm run test && npm run build
+        run: npm run lint
+      - name: Typecheck
+        working-directory: app
+        run: npm run typecheck
+      - name: Test
+        working-directory: app
+        run: npm run test
+      - name: Audit dependencies
+        working-directory: app
+        run: npm audit --audit-level=high
+      - name: Build
+        working-directory: app
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      - name: Check artifact privacy
+        working-directory: app
+        run: npm run privacy:check
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true

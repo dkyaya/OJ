@@ -1,3 +1,5 @@
-# OJ interaction workflow
+# Interaction workflow
 
-OJ drafts are local browser records, not canonical trades. Create a guided trade idea, save it to IndexedDB, generate a Work Update Packet, and paste it into Codex. Codex then updates Obsidian Markdown, validates data, and deploys the published dashboard. Local drafts may be draft, awaiting sync, published, outdated, or conflicting; OJ never implies automatic synchronization.
+OJ saves locally first, synchronizes approved owner records to Supabase, and explicitly resolves multi-device conflicts. The synchronized row is canonical immediately; there is no submission or pull-request step for an ordinary save.
+
+Draft states include local, syncing, canonical, offline, retry, and conflict. The Work Update Packet is a recovery aid, not an instruction to place a trade or write private data into the public repository. Markdown export and private mirroring remain optional actions.

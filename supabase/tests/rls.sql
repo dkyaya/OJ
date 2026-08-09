@@ -1,0 +1,14 @@
+begin;
+select plan(11);
+select has_table('public','trade_ideas','trade_ideas exists');
+select has_column('public','trade_ideas','user_id','ownership column exists');
+select policies_are('public','trade_ideas',array['trade_ideas_select','trade_ideas_insert','trade_ideas_update'],'owner policies are explicit and browser deletes are denied');
+select is((select relrowsecurity from pg_class where oid='public.trade_ideas'::regclass),true,'RLS enabled on trade ideas');
+select is((select relrowsecurity from pg_class where oid='public.formalization_payloads'::regclass),true,'RLS enabled on immutable payloads');
+select is((select relrowsecurity from pg_class where oid='public.formalization_jobs'::regclass),true,'RLS enabled on formalization jobs');
+select isnt_empty($$select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.proname='is_approved_user' and n.nspname='private'$$,'allowlist function is private');
+select ok(not has_function_privilege('anon','private.is_approved_user()','execute'),'anonymous role cannot execute allowlist helper');
+select is((select count(*)::integer from pg_policies where schemaname='public' and policyname like '%_delete'),0,'browser delete policies are absent');
+select isnt_empty($$select 1 from pg_trigger where tgname='guard_profile_privileges' and tgrelid='public.profiles'::regclass$$,'self-approval guard exists');
+select isnt_empty($$select 1 from pg_trigger where tgname='guard_browser_draft_state' and tgrelid='public.trade_ideas'::regclass$$,'browser state-machine guard exists');
+select * from finish();rollback;

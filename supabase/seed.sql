@@ -1,0 +1,2 @@
+-- Approve the first authenticated owner only after verifying their UUID:
+-- insert into public.profiles(id,email,approved) values ('USER_UUID','OWNER_EMAIL',true);

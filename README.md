@@ -1,35 +1,25 @@
 # OJ — Options Journey
 
-OJ is a private, local-first options-trading research journal with a static React dashboard. It is not a brokerage and cannot place trades.
+OJ is a private-by-default options research and journaling application delivered from a public static frontend. Supabase is the canonical datastore. OJ is not a brokerage, never receives brokerage credentials, and cannot place trades.
 
-## Architecture
+## Privacy boundary
 
-`Obsidian Markdown → validate notes → sanitize/static JSON → Vite React dashboard → GitHub Pages`
+This repository contains frontend code, branding, browser-safe Supabase configuration, schema migrations, Edge Functions, tests, and synthetic demo fixtures. Real trade theses, journal entries, research, attachments, emotional notes, account values, and exports never belong in public history.
 
-The initial repository was empty; this foundation follows the supplied structure with the Vite application contained in `app/` and source-vault folders at the repository root.
+`IndexedDB offline cache ↔ approved owner rows in Supabase`
 
-## Local use
+An Obsidian-compatible Markdown export and the private `dkyaya/OJ-Journal` repository remain optional mirrors. Ordinary saves never create a Git commit or rebuild GitHub Pages.
 
-```bash
-cd app
-npm install
-npm run build
-npm run dev
-```
+## Local checks
 
-The first command validates `Trade Ideas/`, then produces sanitized output under `app/public/data/`. Never edit those generated JSON files as the source of truth.
+From `app/`, run `npm ci`, `npm run copy:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and `npm run privacy:check`.
 
-## Obsidian workflow
+## Owner workflow
 
-1. Create a note with a supplied template.
-2. Keep all unknown contract/fill fields as `TBD`.
-3. Move notes to `Active Trades/` or `Closed Trades/` only after explicit user-confirmed fills/exits.
-4. Run `npm run data:build` to update the dashboard.
+1. Sign in with an approved account.
+2. Create or edit research. OJ keeps an offline IndexedDB copy and saves the same revision to Supabase.
+3. Resolve a multi-device conflict explicitly if both copies changed.
+4. Record an entry only after confirming a real fill. The transactional entry operation creates the position and updates the idea together.
+5. Export one record or a full Obsidian-compatible journal whenever a Markdown copy is useful.
 
-## Privacy
-
-Only sanitized public-safe fields are emitted. Do not place credentials, account numbers, tax data, addresses, unredacted confirmations, or private attachments in public-source notes. GitHub Pages deployment is configured in `.github/workflows/deploy-pages.yml` and expects repository Pages to be enabled.
-
-## Quality checks
-
-Run `npm run validate:data`, `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` from `app/`. Browser-review evidence is kept in `artifacts/browser-review/` and never deployed.
+See `docs/NAVIGATION_ARCHITECTURE.md`, `docs/SUPABASE_CANONICAL_MODEL.md`, and `docs/OBSIDIAN_EXPORT.md` for the current architecture.

@@ -1,0 +1,1 @@
+export function revisionState(localRevision:number|undefined,cloudRevision:number,localChanged:boolean,cloudChanged:boolean){if(localChanged&&cloudChanged&&localRevision!==cloudRevision)return'conflict';if(cloudChanged)return'cloud-newer';if(localChanged)return'local';return'canonical'}
