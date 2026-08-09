@@ -97,6 +97,15 @@ export type AppPreferences = {
   revision: number;
 };
 
+export type AccountProfile = {
+  id: string;
+  email: string;
+  displayName: string;
+  initials: string;
+  role: 'owner' | 'member';
+  status: 'pending' | 'invited' | 'active' | 'disabled';
+};
+
 export type Workspace = {
   authenticated: boolean;
   approved: boolean;
@@ -106,6 +115,7 @@ export type Workspace = {
   positions: Position[];
   journal: JournalRecord[];
   opportunities: Opportunity[];
+  profile?: AccountProfile;
   policy?: AccountPolicy;
   preferences?: AppPreferences;
   pendingReviews: number;

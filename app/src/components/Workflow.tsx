@@ -55,13 +55,13 @@ function SyncState({ state }: { state?: Draft['sync'] }) {
   return <span className="sync-state" data-state={state}>{state === 'canonical' ? <Check size={14} /> : <Cloud size={14} />}{label}</span>;
 }
 
-export function Workflow({ open, onClose, initialMode = 'ticker', catalysts = [], maximumRisk, openRisk = 0 }: {
-  open: boolean; onClose: () => void; initialMode?: 'ticker' | 'catalyst'; catalysts?: CatalystChoice[]; maximumRisk?: number; openRisk?: number;
+export function Workflow({ open, onClose, ownerId, initialMode = 'ticker', catalysts = [], maximumRisk, openRisk = 0 }: {
+  open: boolean; onClose: () => void; ownerId: string; initialMode?: 'ticker' | 'catalyst'; catalysts?: CatalystChoice[]; maximumRisk?: number; openRisk?: number;
 }) {
   const [step, setStep] = useState(0); const [data, setData] = useState<Record<string, string>>(initialData(initialMode));
   const [draft, setDraft] = useState<Draft>(); const [history, setHistory] = useState<Draft[]>([]); const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
   const id = useRef<string>(crypto.randomUUID()); const dialog = useRef<HTMLElement>(null); const dataRef = useRef(data); dataRef.current = data;
-  const refreshHistory = useCallback(async () => setHistory(await listDrafts()), []);
+  const refreshHistory = useCallback(async () => setHistory(await listDrafts(ownerId)), [ownerId]);
 
   useEffect(() => { if (!open) return; setData(initialData(initialMode)); setStep(0); setMessage(''); setDraft(undefined); id.current = crypto.randomUUID(); void refreshHistory(); window.setTimeout(() => dialog.current?.querySelector<HTMLElement>('input,select,textarea,button')?.focus(), 0); }, [initialMode, open, refreshHistory]);
   useEffect(() => { if (!open) return; const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, [onClose, open]);
@@ -69,7 +69,7 @@ export function Workflow({ open, onClose, initialMode = 'ticker', catalysts = []
   const metrics = useMemo(() => spreadMetrics(data.Strategy === 'Bull Call Spread' ? 'bull-call-spread' : 'bear-put-spread' as Spread, Number(data['Long strike']), Number(data['Short strike']), Number(data['Net debit']), Number(data.Contracts)), [data]);
   const availableRisk = maximumRisk === undefined ? undefined : Math.max(0, maximumRisk - openRisk);
   const blocked = metrics && availableRisk !== undefined && metrics.maxLoss > availableRisk;
-  const compose = useCallback((sync: Draft['sync'] = 'local'): Draft => ({ id: id.current, kind: 'trade_idea', data: dataRef.current, updatedAt: new Date().toISOString(), cloudRevision: draft?.cloudRevision, cloudUpdatedAt: draft?.cloudUpdatedAt, sync }), [draft?.cloudRevision, draft?.cloudUpdatedAt]);
+  const compose = useCallback((sync: Draft['sync'] = 'local'): Draft => ({ id: id.current, ownerId, kind: 'trade_idea', data: dataRef.current, updatedAt: new Date().toISOString(), cloudRevision: draft?.cloudRevision, cloudUpdatedAt: draft?.cloudUpdatedAt, sync }), [draft?.cloudRevision, draft?.cloudUpdatedAt, ownerId]);
 
   const saveLocal = useCallback(async () => { const next = compose(); await saveDraft(next); setDraft(next); await refreshHistory(); return next; }, [compose, refreshHistory]);
   const saveCloud = useCallback(async (announce = false) => {
@@ -85,7 +85,7 @@ export function Workflow({ open, onClose, initialMode = 'ticker', catalysts = []
 
   const update = (name: string, value: string) => setData((current) => ({ ...current, [name]: value }));
   const load = (item: Draft) => { id.current = item.id; setDraft(item); setData(item.data); setStep(0); setMessage(`Loaded ${item.data.Ticker || 'untitled'} draft.`); };
-  const reset = async () => { if (draft) await clearDraft(draft.id); id.current = crypto.randomUUID(); setDraft(undefined); setData(initialData(initialMode)); setStep(0); await refreshHistory(); };
+  const reset = async () => { if (draft) await clearDraft(ownerId, draft.id); id.current = crypto.randomUUID(); setDraft(undefined); setData(initialData(initialMode)); setStep(0); await refreshHistory(); };
   const finish = async () => {
     const missing = sections.flatMap((section) => section.fields).filter((field) => field.required && !data[field.name]).map((field) => field.label);
     if (missing.length) return setMessage(`Add required fields: ${missing.join(', ')}.`); if (blocked) return setMessage('This structure exceeds available portfolio risk.');

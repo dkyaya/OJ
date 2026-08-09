@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { AccountPolicy, AppPreferences, Candidate, Catalyst, IdeaStatus, JournalRecord, Opportunity, Position, TradeIdea, Workspace } from '../types/domain';
+import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, IdeaStatus, JournalRecord, Opportunity, Position, TradeIdea, Workspace } from '../types/domain';
 import { demoWorkspace } from './demo';
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -41,8 +41,21 @@ export async function loadWorkspace(): Promise<Workspace> {
   if (!supabase) return emptyWorkspace();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return emptyWorkspace();
-  const profile = await supabase.from('profiles').select('approved').eq('id', user.id).maybeSingle();
-  if (!profile.data?.approved) return { ...emptyWorkspace(), authenticated: true };
+  const profileResult = await supabase.from('profiles').select('id,email,approved,display_name,initials,account_role,account_status').eq('id', user.id).maybeSingle();
+  if (profileResult.error) throw new Error(profileResult.error.message);
+  const profileRow = profileResult.data as Record<string, unknown> | null;
+  const email = text(profileRow?.email, user.email || '');
+  const displayName = text(profileRow?.display_name, email.split('@')[0] || 'OJ Member');
+  const initials = text(profileRow?.initials, displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 4).toUpperCase() || 'OJ');
+  const profile: AccountProfile = {
+    id: user.id,
+    email,
+    displayName,
+    initials,
+    role: profileRow?.account_role === 'owner' ? 'owner' : 'member',
+    status: ['invited', 'active', 'disabled'].includes(String(profileRow?.account_status)) ? profileRow?.account_status as AccountProfile['status'] : 'pending',
+  };
+  if (!profileRow?.approved || profile.status !== 'active') return { ...emptyWorkspace(), authenticated: true, profile };
 
   const [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult] = await Promise.all([
     supabase.from('trade_ideas').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
@@ -103,7 +116,7 @@ export async function loadWorkspace(): Promise<Workspace> {
     calendarView: ['week','day'].includes(String(preferenceRow.calendar_view)) ? preferenceRow.calendar_view as 'week' | 'day' : 'month',
     compactCards: Boolean(preferenceRow.compact_cards), revision: Number(preferenceRow.revision || 1),
   } : undefined;
-  return { authenticated: true, approved: true, demo: false, ideas, catalysts, positions, journal, opportunities, policy, preferences, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
+  return { authenticated: true, approved: true, demo: false, ideas, catalysts, positions, journal, opportunities, profile, policy, preferences, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
 }
 
 export async function savePreferences(input: Omit<AppPreferences, 'revision'>, currentRevision?: number) {
