@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
+import { useCallback, useEffect, useState } from 'react';
+import type { AuthChangeEvent, User } from '@supabase/supabase-js';
 import { Cloud, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { cloudConfigured, supabase } from '../lib/supabase';
 import { cloudRowToDraft, flushPendingOperations, hydrateCloud, syncDraft } from '../storage/cloud';
 import { clearAllDrafts, listDrafts, saveDraft, type Draft } from '../storage/drafts';
+import { observeAuthState } from './auth-state';
 
 type Conflict = { local: Draft; cloud: Draft };
 
@@ -11,7 +12,7 @@ export function CloudAccount() {
   const [user, setUser] = useState<User | null>(null); const [email, setEmail] = useState(''); const [open, setOpen] = useState(false);
   const [message, setMessage] = useState(''); const [conflicts, setConflicts] = useState<Conflict[]>([]);
 
-  const hydrate = async () => {
+  const hydrate = useCallback(async () => {
     await flushPendingOperations(); const [rows, local] = await Promise.all([hydrateCloud(), listDrafts()]); const found: Conflict[] = [];
     for (const row of rows) {
       const cloud = cloudRowToDraft(row as Record<string, unknown>); const cached = local.find((item) => item.id === cloud.id);
@@ -21,20 +22,23 @@ export function CloudAccount() {
     }
     setConflicts(found); setMessage(found.length ? `${found.length} conflict${found.length === 1 ? '' : 's'} need review.` : 'OJ is current on this device.');
     window.dispatchEvent(new Event('oj-cloud-workspace-updated'));
-  };
+  }, []);
 
   useEffect(() => {
-    supabase?.auth.getUser().then(({ data }) => setUser(data.user));
-    const listener = supabase?.auth.onAuthStateChange((event, session) => {
-      const next = session?.user || null; const previous = localStorage.getItem('oj-cache-owner');
+    return observeAuthState<User, AuthChangeEvent>(supabase?.auth, (event, next) => {
+      const previous = localStorage.getItem('oj-cache-owner');
       if (next && previous && previous !== next.id) void clearAllDrafts(); if (next) localStorage.setItem('oj-cache-owner', next.id);
       if (event === 'SIGNED_OUT') { localStorage.removeItem('oj-cache-owner'); void clearAllDrafts(); if ('caches' in window) void caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key)))); }
       setUser(next); window.dispatchEvent(new Event('oj-cloud-workspace-updated'));
     });
-    const online = () => user && void hydrate(); window.addEventListener('online', online);
-    return () => { listener?.data.subscription.unsubscribe(); window.removeEventListener('online', online); };
-  }, [user]);
-  useEffect(() => { if (user) void hydrate().catch((error) => setMessage(error instanceof Error ? error.message : 'Refresh failed.')); }, [user]);
+  }, []);
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    const run = () => void hydrate().catch((error) => setMessage(error instanceof Error ? error.message : 'Refresh failed.'));
+    run(); window.addEventListener('online', run);
+    return () => window.removeEventListener('online', run);
+  }, [hydrate, userId]);
 
   const login = async () => { if (!supabase) return; const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${location.origin}${location.pathname}` } }); setMessage(error ? error.message : 'Check your email for the sign-in link.'); };
   const resolve = async (item: Conflict, choice: 'local' | 'cloud' | 'duplicate') => {
