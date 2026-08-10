@@ -13,4 +13,4 @@ Visible states are Local Draft, Saving, Saved to OJ, Saved Offline, Retry Needed
 
 Supabase rows use monotonic revisions, and `record_revisions` preserves snapshots. Logout or account change clears the owner-scoped IndexedDB cache before another account can hydrate. Optional Markdown mirroring is separate from normal saves.
 
-Archive and restore are intentionally excluded from offline retry. These lifecycle commands require a live owner session, the latest canonical revision, and a fresh server check that no confirmed trade history exists. If offline, OJ changes nothing and asks the owner to reconnect and retry.
+Archive, restore, and permanent delete are intentionally excluded from offline retry. These lifecycle commands require a live owner session, the latest canonical revision, and a fresh server eligibility check. If offline, OJ changes nothing and asks the owner to reconnect and retry. A successful delete clears that device's matching local draft and queued save. If another device later tries to save an older canonical copy, the content-free server tombstone rejects recreation and OJ offers to duplicate the local text under a new idea instead.

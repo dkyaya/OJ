@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { clearDraft, removeOperation } from '../storage/drafts';
 import type { AccountPolicy } from '../types/domain';
 
 async function approvedUser() {
@@ -51,6 +52,30 @@ export async function setTradeIdeaArchived(input: { ideaId: string; expectedRevi
   });
   if (error) throw new Error(ideaLifecycleError(error));
   if (typeof data !== 'number') throw new Error('OJ could not confirm the idea archive change. Refresh before trying again.');
+  return data;
+}
+
+export function ideaDeletionError(error: unknown) {
+  const detail = error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error || '');
+  if (/changed on another device|revision/i.test(detail)) return 'This idea changed on another device. OJ refreshed the latest version; review it before trying again.';
+  if (/archive the idea/i.test(detail)) return 'Archive this idea before deleting it permanently.';
+  if (/confirmation did not match/i.test(detail)) return 'The deletion phrase did not match. Nothing was deleted.';
+  if (/trade or journal history/i.test(detail)) return 'Ideas with trade or journal history cannot be deleted.';
+  if (/not found|row-level security/i.test(detail)) return 'OJ could not find an eligible archived idea to delete. Refresh and try again.';
+  return 'OJ could not delete this idea. Nothing was changed.';
+}
+
+export async function deleteTradeIdea(input: { ideaId: string; expectedRevision: number; confirmation: string }) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Connect to the internet to delete an idea. OJ did not queue this permanent action.');
+  const user = await approvedUser();
+  const { data, error } = await supabase!.rpc('delete_trade_idea', {
+    p_trade_idea_id: input.ideaId,
+    p_expected_revision: input.expectedRevision,
+    p_confirmation: input.confirmation,
+  });
+  if (error) throw new Error(ideaDeletionError(error));
+  if (typeof data !== 'string') throw new Error('OJ could not confirm the permanent deletion. Refresh before trying again.');
+  await Promise.all([clearDraft(user.id, input.ideaId), removeOperation(user.id, input.ideaId)]).catch(() => undefined);
   return data;
 }
 

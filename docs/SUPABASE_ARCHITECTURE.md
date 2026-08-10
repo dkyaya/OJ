@@ -20,6 +20,6 @@ For local development, install the Supabase CLI, run `supabase start`, `supabase
 
 ## Canonical boundary
 
-The public schema is explicitly exposed only where the browser needs it. Authenticated clients may read and update approved owner records, but cannot delete, mutate trusted workflow state, or directly create confirmed positions. Composite foreign keys bind every trade child to the same `(trade_idea_id,user_id)` owner. Server-only payloads and sync events have no browser grants or policies.
+The public schema is explicitly exposed only where the browser needs it. Authenticated clients may read and update approved owner records, but cannot directly delete tables, mutate trusted workflow state, or directly create confirmed positions. Permanent idea deletion is mediated by an archive-first, exact-confirmation command and private processor. Composite foreign keys bind every trade child to the same `(trade_idea_id,user_id)` owner. Server-only payloads and sync events have no browser grants or policies.
 
 Supabase is the application authority. Commit SHA and note path fields are optional provenance for a private Markdown mirror. Ordinary saves update Supabase directly and never trigger a public Pages build.

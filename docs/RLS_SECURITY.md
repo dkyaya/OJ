@@ -9,10 +9,13 @@ Database triggers add defense in depth:
 - publication fields are trusted-only;
 - browser writes may produce only `cloud_draft`;
 - browser revisions must increment exactly once;
-- browser deletion is disabled;
+- direct browser table deletion is disabled;
 - archive and restore use a narrowly granted, owner-scoped, revision-checked function;
 - research with confirmed active or closed trade history cannot be archived;
 - archived research cannot enter the confirmed-trade processor;
+- permanent deletion uses a separate archive-first command, exact ticker phrase, revision check, and private processor;
+- any trade or journal history blocks permanent deletion;
+- content-free, browser-inaccessible tombstones prevent stale-device recreation;
 - trusted workflows control submission, PR, merge, and publication states.
 
 The allowlist helper uses a safe empty search path, lives in an unexposed schema, and is not executable by anonymous users. Every security-definer function has explicit permissions and a safe search path. No Storage buckets or Realtime publication tables are required in this version.
