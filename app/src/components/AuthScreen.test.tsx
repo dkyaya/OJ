@@ -21,9 +21,14 @@ describe('account screens', () => {
     expect(html.match(/autoComplete="new-password"/g)).toHaveLength(2);
   });
 
-  it('does not expose an activation form before the invite link creates a session', () => {
+  it('renders scanner-safe manual invite activation without an existing session', () => {
     const html = renderToStaticMarkup(<AuthScreen {...props} mode="activate" />);
-    expect(html).toContain('Open your invitation email');
-    expect(html).not.toContain('<form');
+    expect(html).toContain('Activate Account');
+    expect(html).toContain('Set up your OJ account.');
+    expect(html).toContain('Invite Code');
+    expect(html).toContain('autoComplete="email"');
+    expect(html).toContain('autoComplete="one-time-code"');
+    expect(html.match(/autoComplete="new-password"/g)).toHaveLength(2);
+    expect(html).toContain('<form');
   });
 });

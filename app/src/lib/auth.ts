@@ -1,7 +1,9 @@
 import { supabase } from './supabase';
+import { clearOwnerDrafts } from '../storage/drafts';
 
 export type AuthMode = 'sign-in' | 'forgot' | 'activate' | 'reset';
 export const MINIMUM_PASSWORD_LENGTH = 12;
+export const INVITE_CODE_LENGTH = 6;
 
 const authModes = new Set<AuthMode>(['sign-in', 'forgot', 'activate', 'reset']);
 
@@ -52,6 +54,32 @@ function validPassword(password: string, confirmation: string) {
   if (password !== confirmation) throw new Error('Passwords do not match.');
 }
 
+function normalizedEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  if (normalized.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) throw new Error('Enter a valid email.');
+  return normalized;
+}
+
+function normalizedInviteCode(inviteCode: string) {
+  const normalized = inviteCode.trim();
+  if (!new RegExp(`^\\d{${INVITE_CODE_LENGTH}}$`).test(normalized)) throw new Error(`Enter the ${INVITE_CODE_LENGTH}-digit invite code.`);
+  return normalized;
+}
+
+async function signOutLocal() {
+  if (!supabase) return;
+  const { error } = await supabase.auth.signOut({ scope: 'local' });
+  if (error) throw new Error('Account activation failed. Request a new invite.');
+}
+
+async function clearLocalAccountState(sessionUserId: string | undefined, onLocalStateCleared?: () => void) {
+  const cachedOwner = typeof localStorage === 'undefined' ? null : localStorage.getItem('oj-cache-owner');
+  const owners = [...new Set([sessionUserId, cachedOwner].filter((value): value is string => Boolean(value)))];
+  await Promise.all(owners.map((ownerId) => clearOwnerDrafts(ownerId)));
+  if (typeof localStorage !== 'undefined') localStorage.removeItem('oj-cache-owner');
+  onLocalStateCleared?.();
+}
+
 export async function signInWithPassword(email: string, password: string) {
   if (!supabase) throw new Error('OJ cloud is not configured.');
   const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
@@ -72,11 +100,43 @@ export async function setAccountPassword(password: string, confirmation: string,
   if (error) throw new Error(friendlyAuthError(error, 'password'));
 }
 
-export async function activateInvitedAccount(password: string, confirmation: string) {
+export async function activateInvitedAccount(email: string, inviteCode: string, password: string, confirmation: string, onLocalStateCleared?: () => void) {
   if (!supabase) throw new Error('OJ cloud is not configured.');
-  await setAccountPassword(password, confirmation);
-  const { error } = await supabase.rpc('activate_invited_account');
-  if (error) throw new Error('This invitation is invalid or has expired.');
+  const normalized = normalizedEmail(email);
+  const token = normalizedInviteCode(inviteCode);
+  validPassword(password, confirmation);
+
+  const { data: { session: existingSession }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw new Error('Account activation failed. Request a new invite.');
+  try {
+    await clearLocalAccountState(existingSession?.user.id, onLocalStateCleared);
+  } catch {
+    throw new Error('Account activation failed. Request a new invite.');
+  }
+  if (existingSession) await signOutLocal();
+
+  const verification = await supabase.auth.verifyOtp({ email: normalized, token, type: 'invite' });
+  if (verification.error || !verification.data.session) throw new Error('Invalid or expired invite code.');
+
+  const verifiedSession = verification.data.session;
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const verifiedEmail = user?.email?.trim().toLowerCase();
+  if (userError || !user || user.id !== verifiedSession.user.id || verifiedEmail !== normalized || !user.email_confirmed_at) {
+    await signOutLocal();
+    throw new Error('Account activation failed. Request a new invite.');
+  }
+
+  const passwordResult = await supabase.auth.updateUser({ password });
+  if (passwordResult.error) {
+    await signOutLocal();
+    throw new Error(friendlyAuthError(passwordResult.error, 'password'));
+  }
+
+  const activation = await supabase.rpc('activate_invited_account');
+  if (activation.error) {
+    await signOutLocal();
+    throw new Error('This invitation is no longer available.');
+  }
 }
 
 export async function updateAccountProfile(displayName: string, initials: string) {

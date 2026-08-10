@@ -26,6 +26,6 @@ See `docs/NAVIGATION_ARCHITECTURE.md`, `docs/SUPABASE_CANONICAL_MODEL.md`, and `
 
 ## Accounts
 
-OJ has no public signup. The production owner can send a future member invitation from Settings → Access. The invite link establishes a verified Supabase session, the member chooses a password, and a server-validated activation promotes only the matching live invitation. Settings also supports profile editing, password changes, current-device sign-out, and global sign-out.
+OJ has no public signup. The production owner can send a future member invitation from Settings → Access. The email contains a six-digit invite code and a scanner-safe link that only opens OJ. The recipient enters the invited email, code, and a new password; OJ clears any conflicting session in that browser, verifies the code as the invited identity, and then invokes the server-validated activation operation. Settings also supports profile editing, password changes, current-device sign-out, and global sign-out.
 
-Browser drafts and retry operations are namespaced by Supabase user ID. On sign-out, private application state and that account's local cache are cleared while harmless global theme preferences remain. See `docs/AUTHENTICATION.md`, `docs/INVITE_FLOW.md`, and `docs/SESSION_SECURITY.md`.
+Browser drafts and retry operations are namespaced by Supabase user ID. On sign-out, private application state and that account's local cache are cleared while harmless global theme preferences remain. See `docs/AUTHENTICATION.md`, `docs/INVITE_FLOW.md`, `docs/INVITE_OTP_ACTIVATION.md`, and `docs/SESSION_SECURITY.md`.

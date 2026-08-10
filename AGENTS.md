@@ -13,3 +13,8 @@
 - OJ is invite-only. Do not add public signup, browser-controlled approval, browser role escalation, or readable invitation policies. Owner invitations must pass through the authenticated owner-only Edge Function.
 - Every private IndexedDB record, draft, conflict, and retry operation must be partitioned by the stable Supabase user ID. Sign-out must clear private in-memory state and the current user's cache without removing harmless global display preferences.
 - Keep app-level `owner` / `member` roles separate from future workspace roles. Do not begin workspace, collaboration, mission, or forecast phases without a later explicit task.
+- Invitation emails must never depend on a GET request consuming a one-time credential. Use a human-entered code and a scanner-safe application link.
+- Invite activation must clear conflicting local auth and private cache state before OTP verification. Never global-sign-out an owner merely to activate another account in one browser.
+- Call `activate_invited_account()` only after the current authenticated session email exactly matches the normalized invited email submitted in the activation form.
+- Never log invite OTPs. Do not reintroduce direct confirmation URLs without a documented scanner-safe design.
+- Production invite changes require one complete behavioral invite lifecycle and cleanup test before Phase 5+ work begins.
