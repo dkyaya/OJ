@@ -10,6 +10,9 @@ Database triggers add defense in depth:
 - browser writes may produce only `cloud_draft`;
 - browser revisions must increment exactly once;
 - browser deletion is disabled;
+- archive and restore use a narrowly granted, owner-scoped, revision-checked function;
+- research with confirmed active or closed trade history cannot be archived;
+- archived research cannot enter the confirmed-trade processor;
 - trusted workflows control submission, PR, merge, and publication states.
 
 The allowlist helper uses a safe empty search path, lives in an unexposed schema, and is not executable by anonymous users. Every security-definer function has explicit permissions and a safe search path. No Storage buckets or Realtime publication tables are required in this version.

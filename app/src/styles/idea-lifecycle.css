@@ -1,0 +1,19 @@
+.status[data-status="archived"]{background:var(--surface-2);color:var(--muted)}
+.archived-idea>.summary-card{border-color:color-mix(in srgb,var(--muted) 30%,var(--line));background:color-mix(in srgb,var(--surface) 86%,var(--surface-2))}
+.lifecycle-card-actions{display:flex;align-items:center;gap:8px}
+.restore-action{color:var(--green)}
+.idea-lifecycle-section{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.idea-lifecycle-section h3{margin:0 0 4px;font-size:13px}
+.idea-lifecycle-section p{max-width:720px;margin:0;color:var(--muted);font-size:12px}
+.subtle-danger,.danger-button{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.subtle-danger{flex:none;border-color:color-mix(in srgb,var(--red) 35%,var(--line));background:transparent;color:var(--red)}
+.subtle-danger:hover{border-color:var(--red);background:var(--red-soft)}
+.archive-backdrop{z-index:140}
+.archive-dialog{width:min(520px,100%);padding:24px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:0 30px 90px rgba(0,0,0,.4)}
+.archive-dialog>header{display:flex;align-items:start;justify-content:space-between;gap:18px}
+.archive-dialog h2{margin:4px 0 0;font-size:28px;letter-spacing:-.045em}
+.archive-dialog>p{margin:18px 0;color:var(--muted)}
+.archive-dialog>footer{display:flex;justify-content:flex-end;gap:9px;padding-top:16px;border-top:1px solid var(--line)}
+.danger-button{border-color:var(--red);background:var(--red);color:#fff}
+.danger-button:hover{border-color:var(--red);background:color-mix(in srgb,var(--red) 85%,#000)}
+@media(max-width:620px){.idea-lifecycle-section{align-items:stretch;flex-direction:column;gap:14px}.subtle-danger{width:100%}.archived-idea .summary-card footer{align-items:flex-start;flex-direction:column}.lifecycle-card-actions{width:100%;justify-content:flex-end;gap:3px}.archive-backdrop{align-items:end;padding:0}.archive-dialog{width:100%;padding:22px 18px max(22px,env(safe-area-inset-bottom));border-radius:22px 22px 0 0}.archive-dialog>footer{display:grid;grid-template-columns:1fr 1fr}.archive-dialog>footer button{min-width:0}}

@@ -18,6 +18,7 @@ export const demoWorkspace: Workspace = {
       thesis: 'Synthetic deferred research.', updatedAt: '2026-08-06T12:00:00Z', revision: 1, candidates: [], data: {},
     },
   ],
+  archivedIdeas: [],
   catalysts: [
     { id: '20000000-0000-4000-8000-000000000001', event: 'Employment release', type: 'Employment', date: '2026-08-14', sensitivity: 'High', status: 'Scheduled', source: 'Synthetic source', cluster: 'macro-demo', linkedTickers: ['DEMO'], revision: 1, data: {} },
     { id: '20000000-0000-4000-8000-000000000002', event: 'Inflation release', type: 'Inflation', date: '2026-08-20', sensitivity: 'Medium', status: 'Scheduled', source: 'Synthetic source', cluster: 'macro-demo', linkedTickers: ['SAMPLE'], revision: 1, data: {} },

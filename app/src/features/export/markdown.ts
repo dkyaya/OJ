@@ -24,18 +24,19 @@ function journalMarkdown(entry: JournalRecord, idea?: TradeIdea) {
 export function journalExportFiles(workspace: Workspace) {
   const files: Record<string, string> = {
     'README.md': '# OJ Journal Export\n\nGenerated from the signed-in user’s canonical Supabase records. Import this folder into Obsidian if desired. OJ does not require this mirror.\n',
-    'Dashboard.md': `# OJ Dashboard\n\n- Ideas: ${workspace.ideas.length}\n- Catalysts: ${workspace.catalysts.length}\n- Active trades: ${workspace.positions.filter((item) => item.status === 'active').length}\n- Closed trades: ${workspace.positions.filter((item) => item.status === 'closed').length}\n- Journal records: ${workspace.journal.length}\n`,
+    'Dashboard.md': `# OJ Dashboard\n\n- Active ideas: ${workspace.ideas.length}\n- Archived ideas: ${workspace.archivedIdeas.length}\n- Catalysts: ${workspace.catalysts.length}\n- Active trades: ${workspace.positions.filter((item) => item.status === 'active').length}\n- Closed trades: ${workspace.positions.filter((item) => item.status === 'closed').length}\n- Journal records: ${workspace.journal.length}\n`,
   };
   for (const idea of workspace.ideas) {
     const position = workspace.positions.find((item) => item.ideaId === idea.id);
     files[`Trade Ideas/${safeName(`${idea.ticker}-${idea.strategy}-${idea.id.slice(0, 8)}`)}.md`] = tradeMarkdown(idea, position);
   }
+  for (const idea of workspace.archivedIdeas) files[`Archived Ideas/${safeName(`${idea.ticker}-${idea.strategy}-${idea.id.slice(0, 8)}`)}.md`] = tradeMarkdown(idea);
   for (const catalyst of workspace.catalysts) files[`Catalysts/${safeName(`${catalyst.date || 'TBD'}-${catalyst.event}-${catalyst.id.slice(0, 8)}`)}.md`] = catalystMarkdown(catalyst);
   for (const position of workspace.positions) {
     const folder = position.status === 'active' ? 'Active Trades' : 'Closed Trades';
-    files[`${folder}/${safeName(`${position.ticker}-${position.id.slice(0, 8)}`)}.md`] = positionMarkdown(position, workspace.ideas.find((idea) => idea.id === position.ideaId));
+    files[`${folder}/${safeName(`${position.ticker}-${position.id.slice(0, 8)}`)}.md`] = positionMarkdown(position, [...workspace.ideas, ...workspace.archivedIdeas].find((idea) => idea.id === position.ideaId));
   }
-  for (const entry of workspace.journal) files[`Journal/${safeName(`${entry.createdAt.slice(0, 10)}-${entry.kind}-${entry.id.slice(0, 8)}`)}.md`] = journalMarkdown(entry, workspace.ideas.find((idea) => idea.id === entry.ideaId));
+  for (const entry of workspace.journal) files[`Journal/${safeName(`${entry.createdAt.slice(0, 10)}-${entry.kind}-${entry.id.slice(0, 8)}`)}.md`] = journalMarkdown(entry, [...workspace.ideas, ...workspace.archivedIdeas].find((idea) => idea.id === entry.ideaId));
   files['Journal/Journal Index.md'] = `# Journal\n\n${workspace.journal.length ? workspace.journal.map((item) => `- ${item.createdAt}: ${item.summary}`).join('\n') : 'No journal records.'}\n`;
   files['Research/Catalyst Index.md'] = `# Catalyst Research\n\n${workspace.catalysts.length ? workspace.catalysts.map((item) => `- ${item.date || 'TBD'} — ${item.event} (${item.linkedTickers.join(', ') || 'mapping TBD'})`).join('\n') : 'No catalyst research.'}\n`;
   files['Research/Account Policy.md'] = workspace.policy ? `# Account Policy\n\n- Effective: ${workspace.policy.effectiveDate}\n- Total capital: ${workspace.policy.totalCapital}\n- Maximum open options risk: ${workspace.policy.maximumOpenRisk}\n- Fixed per-trade limit: ${value(workspace.policy.fixedPerTradeLimit)}\n- Strategies: ${workspace.policy.strategies.join(', ') || 'TBD'}\n- Version: ${workspace.policy.version}\n` : '# Account Policy\n\nTBD\n';

@@ -27,6 +27,7 @@ export type TradeIdea = {
   catalystId?: string;
   catalystCluster?: string;
   risk?: number;
+  archivedAt?: string;
   updatedAt: string;
   revision: number;
   candidates: Candidate[];
@@ -111,6 +112,7 @@ export type Workspace = {
   approved: boolean;
   demo: boolean;
   ideas: TradeIdea[];
+  archivedIdeas: TradeIdea[];
   catalysts: Catalyst[];
   positions: Position[];
   journal: JournalRecord[];

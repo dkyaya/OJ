@@ -78,7 +78,7 @@ export default function App() {
 
   const page = route === '/' ? <OverviewPage workspace={workspace} onBuildIdea={() => setWorkflow('ticker')} />
     : route === '/catalysts' ? <CatalystsPage workspace={workspace} onSaved={refresh} />
-      : route === '/ideas' ? <IdeasPage workspace={workspace} onBuildIdea={() => setWorkflow('ticker')} />
+      : route === '/ideas' ? <IdeasPage workspace={workspace} onBuildIdea={() => setWorkflow('ticker')} onSaved={refresh} />
         : route === '/trades' ? <TradesPage workspace={workspace} onSaved={refresh} />
           : route === '/journal' ? <JournalPage workspace={workspace} onSaved={refresh} />
             : route === '/insights' ? <InsightsPage workspace={workspace} />
