@@ -1,27 +1,37 @@
 # Invite test cleanup
 
-Date: 2026-08-09
+Date: 2026-08-10
 
-Status: procedure verified by schema review; production execution awaits the real temporary invite test.
+Status: executed and verified in production.
 
-## Safe order
+## Pre-delete checks
 
-1. Identify the temporary user by the exact test identity selected for the lifecycle. Never select by broad pattern.
-2. Confirm that identity is not the owner and its profile role is `member`.
-3. Delete or archive the member-owned synthetic `TEST` draft and confirm no owner row is selected.
-4. Inspect member-owned dependent rows, accepted invitation reference, revision/audit rows, and foreign-key behavior.
-5. Delete the exact temporary Auth user through a trusted admin surface.
-6. Remove the exact invitation row if it is not cleared by the tested cleanup operation.
-7. Confirm no orphan profile, invite, draft, revision, or member-owned row remains.
-8. Recount Auth users, profiles, owners, invitations, canonical research, policies, trades, entries, and exits.
+- Selected the temporary identity by one exact address supplied for this lifecycle; no broad match was used.
+- Confirmed its profile was `member`, not `owner`.
+- Confirmed the invitation was accepted and linked to that member.
+- Inspected every public foreign key referencing `auth.users` or `public.profiles`.
+- Confirmed the temporary member owned no policy, research, journal, revision, synchronization, trade, entry, exit, request, candidate, catalyst, or formalization row.
 
-## Required final state
+## Executed safe order
 
-- 1 Auth user
-- 1 profile
-- 1 active approved owner
-- 0 temporary invitations
-- Owner canonical counts unchanged from the protected pre-test snapshot
-- 0 confirmed trades, entries, and exits unless the owner independently records a real fill
+1. Removed the exact temporary Auth sessions.
+2. Removed the exact accepted invitation before profile deletion so the accepted-invitation consistency constraint could not be violated by `accepted_user_id on delete set null`.
+3. Deleted the exact temporary Auth user only after a `member` role guard passed.
+4. Allowed the existing `profiles.id → auth.users.id on delete cascade` relationship to remove the temporary profile.
+5. Recounted the test identity, owner account, invitations, and canonical records.
 
-The real execution report must record aggregate counts only and must not include credentials, invite codes, tokens, or private journal content.
+## Verified final state
+
+- Remaining temporary invitations: 0
+- Remaining temporary Auth users: 0
+- Remaining temporary profiles: 0
+- Auth users: 1
+- Profiles: 1
+- Active approved owners: 1
+- Account invitations: 0
+- Owner canonical counts unchanged: 3 ideas, 5 candidates, 8 catalysts, 1 policy
+- Confirmed trades, entries, and exits: 0
+
+Supabase documents that a deleted Auth user's existing JWT can remain cryptographically valid until expiry. OJ's approved-profile RLS gate fails immediately after the profile is removed, and the temporary sessions were deleted first. The now-stale browser correctly received `User from sub claim in JWT does not exist` after cleanup.
+
+This report contains no email address, UUID, password, invite code, access token, refresh token, JWT, or private record content.
