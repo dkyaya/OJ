@@ -4,6 +4,10 @@ import { listOperations, queueOperation, removeOperation, saveDraft, type Draft 
 
 export type CloudResult = { state: 'local' | 'canonical' | 'conflict' | 'rejected' | 'error'; draft: Draft; cloud?: Record<string, unknown>; message?: string };
 
+export function shouldRejectMissingCanonical(draft: Draft) {
+  return draft.cloudRevision !== undefined;
+}
+
 const text = (data: Record<string, string>, key: string) => data[key]?.trim() || '';
 const optionalNumber = (value: string) => value.trim() && Number.isFinite(Number(value)) ? Number(value) : null;
 const optionalInteger = (value: string) => Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
@@ -65,6 +69,9 @@ export async function syncDraft(draft: Draft): Promise<CloudResult> {
   if (!user) return { state: 'rejected', draft: { ...draft, sync: 'local' }, message: 'Sign in with an approved account to save to OJ.' };
   const remote = await supabase.from('trade_ideas').select('*').eq('id', draft.id).maybeSingle();
   if (remote.error) return { state: 'error', draft: { ...draft, sync: 'retry' }, message: remote.error.message };
+  if (!remote.data && shouldRejectMissingCanonical(draft)) {
+    return { state: 'rejected', draft: { ...draft, sync: 'conflict' }, message: 'This idea was removed from OJ and cannot be recreated from a stale device. Duplicate it as a new idea if you need the local copy.' };
+  }
   if (remote.data && draft.cloudRevision !== Number(remote.data.revision)) return { state: 'conflict', draft: { ...draft, sync: 'conflict' }, cloud: remote.data, message: 'This idea changed on another device. Compare both versions before saving.' };
 
   let catalystId = uuid(text(draft.data, 'Existing catalyst ID')) ? text(draft.data, 'Existing catalyst ID') : '';

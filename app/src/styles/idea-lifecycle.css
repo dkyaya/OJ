@@ -13,6 +13,12 @@
 .archive-dialog>header{display:flex;align-items:start;justify-content:space-between;gap:18px}
 .archive-dialog h2{margin:4px 0 0;font-size:28px;letter-spacing:-.045em}
 .archive-dialog>p{margin:18px 0;color:var(--muted)}
+.permanent-delete-section{border-top-color:color-mix(in srgb,var(--red) 28%,var(--line))}
+.delete-dialog{border-color:color-mix(in srgb,var(--red) 45%,var(--line))}
+.delete-confirmation{display:grid;gap:8px;margin:20px 0;color:var(--muted);font-size:12px}
+.delete-confirmation strong{color:var(--ink);font-family:'DM Mono';font-size:11px}
+.delete-confirmation input{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);padding:11px 12px;font-family:'DM Mono'}
+.delete-confirmation input:focus{outline:2px solid color-mix(in srgb,var(--red) 45%,transparent);outline-offset:2px;border-color:var(--red)}
 .archive-dialog>footer{display:flex;justify-content:flex-end;gap:9px;padding-top:16px;border-top:1px solid var(--line)}
 .danger-button{border-color:var(--red);background:var(--red);color:#fff}
 .danger-button:hover{border-color:var(--red);background:color-mix(in srgb,var(--red) 85%,#000)}

@@ -1,9 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { demoWorkspace } from '../data/demo';
-import { ideasForFilter } from '../lib/idea-lifecycle';
+import { canConfirmIdeaDelete, deleteConfirmationFor, ideasForFilter } from '../lib/idea-lifecycle';
 import type { Position, TradeIdea, Workspace } from '../types/domain';
-import { ArchiveIdeaDialog, IdeasPage } from './IdeasPage';
+import { ArchiveIdeaDialog, DeleteIdeaDialog, IdeasPage } from './IdeasPage';
 
 const archivedIdea: TradeIdea = {
   ...demoWorkspace.ideas[0],
@@ -26,13 +26,29 @@ describe('idea archive presentation', () => {
     expect(ideasForFilter(current, 'archived')[0].candidates).toHaveLength(1);
   });
 
-  it('renders Archived, Restore, Export, and preserved research without an archive action', () => {
+  it('renders Archive, Restore, and Delete as separate lifecycle actions', () => {
     const html = renderToStaticMarkup(<IdeasPage workspace={workspace()} onBuildIdea={() => undefined} onSaved={() => undefined} initialFilter="archived" />);
     expect(html).toContain('data-status="archived"');
     expect(html).toContain('Restore');
     expect(html).toContain('Export');
+    expect(html).toContain('Delete Permanently');
+    expect(html).toContain('Permanent deletion');
     expect(html).toContain('Balanced');
     expect(html).not.toContain('Archive unavailable');
+    expect(html).not.toContain('Archive Idea');
+  });
+
+  it('does not offer permanent deletion before an idea is archived', () => {
+    const html = renderToStaticMarkup(<IdeasPage workspace={workspace({ archivedIdeas: [] })} onBuildIdea={() => undefined} onSaved={() => undefined} />);
+    expect(html).toContain('Archive Idea');
+    expect(html).not.toContain('Delete Permanently');
+  });
+
+  it('disables permanent deletion when archived research has journal history', () => {
+    const html = renderToStaticMarkup(<IdeasPage workspace={workspace({ journal: [{ id: 'review', ideaId: archivedIdea.id, kind: 'review', createdAt: '2026-08-10T19:00:00Z', summary: 'Keep this history', data: {} }] })} onBuildIdea={() => undefined} onSaved={() => undefined} initialFilter="archived" />);
+    expect(html).toContain('Delete unavailable');
+    expect(html).toContain('trade or journal history');
+    expect(html).toContain('disabled');
   });
 
   it('explains why trade-backed ideas cannot be archived', () => {
@@ -51,5 +67,17 @@ describe('idea archive presentation', () => {
     expect(html).toContain('Archive DEMO?');
     expect(html).toContain('Keep Idea');
     expect(html).toContain('You can restore it later');
+  });
+
+  it('requires an exact ticker-specific phrase for permanent deletion', () => {
+    const html = renderToStaticMarkup(<DeleteIdeaDialog idea={archivedIdea} busy={false} onCancel={() => undefined} onConfirm={() => undefined} />);
+    expect(html).toContain('Permanent action');
+    expect(html).toContain('DELETE ARCHIVE');
+    expect(html).toContain('cannot be undone');
+    expect(html).toContain('private journal copies are not recalled');
+    expect(html).toContain('disabled');
+    expect(deleteConfirmationFor('SPY')).toBe('DELETE SPY');
+    expect(canConfirmIdeaDelete('SPY', 'DELETE SPY')).toBe(true);
+    expect(canConfirmIdeaDelete('SPY', 'delete spy')).toBe(false);
   });
 });

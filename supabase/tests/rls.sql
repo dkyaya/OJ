@@ -8,6 +8,9 @@ declare
   activation_config text[];
   archive_is_definer boolean;
   archive_config text[];
+  deletion_is_definer boolean;
+  deletion_config text[];
+  deletion_policies text[];
 begin
   if to_regclass('public.trade_ideas') is null then raise exception 'trade_ideas missing'; end if;
   if not exists (
@@ -33,6 +36,23 @@ begin
   if not exists (select 1 from pg_trigger where tgname='guard_browser_draft_state' and tgrelid='public.trade_ideas'::regclass) then raise exception 'browser draft-state guard missing'; end if;
   if not exists (select 1 from pg_trigger where tgname='guard_trade_idea_archive' and tgrelid='public.trade_ideas'::regclass) then raise exception 'trade-backed archive guard missing'; end if;
   if has_table_privilege('authenticated','public.trade_ideas','delete') then raise exception 'authenticated can hard-delete trade ideas'; end if;
+  if not (select relrowsecurity from pg_class where oid='public.trade_idea_deletion_requests'::regclass) then raise exception 'trade idea deletion request RLS disabled'; end if;
+  if not (select relrowsecurity from pg_class where oid='public.trade_idea_deletion_tombstones'::regclass) then raise exception 'trade idea deletion tombstone RLS disabled'; end if;
+  select array_agg(policyname order by policyname) into deletion_policies
+  from pg_policies where schemaname='public' and tablename='trade_idea_deletion_requests';
+  if deletion_policies is distinct from array['trade_idea_deletion_requests_owner_insert']::text[] then raise exception 'trade idea deletion request policies changed'; end if;
+  if not has_table_privilege('authenticated','public.trade_idea_deletion_requests','insert') then raise exception 'authenticated cannot insert deletion commands'; end if;
+  if has_table_privilege('authenticated','public.trade_idea_deletion_requests','select')
+    or has_table_privilege('authenticated','public.trade_idea_deletion_requests','update')
+    or has_table_privilege('authenticated','public.trade_idea_deletion_requests','delete')
+  then raise exception 'authenticated has excess deletion-command privileges'; end if;
+  if not exists (select 1 from pg_trigger where tgname='process_trade_idea_deletion_request' and tgrelid='public.trade_idea_deletion_requests'::regclass) then raise exception 'private deletion processor trigger missing'; end if;
+  if not exists (select 1 from pg_trigger where tgname='guard_deleted_trade_idea_recreation' and tgrelid='public.trade_ideas'::regclass) then raise exception 'stale-device recreation guard missing'; end if;
+  if exists (select 1 from pg_policies where schemaname='public' and tablename='trade_idea_deletion_tombstones') then raise exception 'deletion tombstones have a browser policy'; end if;
+  if exists (
+    select 1 from information_schema.role_table_grants
+    where table_schema='public' and table_name='trade_idea_deletion_tombstones' and grantee in ('anon','authenticated')
+  ) then raise exception 'browser role has deletion tombstone grant'; end if;
 
   if exists (select 1 from pg_policies where schemaname='public' and tablename='account_invites') then raise exception 'account_invites browser policy exists'; end if;
   if exists (
@@ -56,6 +76,16 @@ begin
   if archive_config is distinct from array['search_path=""']::text[] then raise exception 'archive RPC search path is not empty'; end if;
   if has_function_privilege('anon','public.set_trade_idea_archived(uuid,integer,boolean)','execute') then raise exception 'anon can execute archive RPC'; end if;
   if not has_function_privilege('authenticated','public.set_trade_idea_archived(uuid,integer,boolean)','execute') then raise exception 'authenticated cannot execute archive RPC'; end if;
+
+  select p.prosecdef, p.proconfig into deletion_is_definer, deletion_config
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='public' and p.proname='delete_trade_idea'
+    and pg_get_function_identity_arguments(p.oid)='p_trade_idea_id uuid, p_expected_revision integer, p_confirmation text';
+  if deletion_is_definer is distinct from false then raise exception 'delete RPC should use caller RLS'; end if;
+  if deletion_config is distinct from array['search_path=""']::text[] then raise exception 'delete RPC search path is not empty'; end if;
+  if has_function_privilege('anon','public.delete_trade_idea(uuid,integer,text)','execute') then raise exception 'anon can execute delete RPC'; end if;
+  if not has_function_privilege('authenticated','public.delete_trade_idea(uuid,integer,text)','execute') then raise exception 'authenticated cannot execute delete RPC'; end if;
+  if has_function_privilege('authenticated','private.process_trade_idea_deletion_request()','execute') then raise exception 'authenticated can execute private deletion processor'; end if;
   if not exists (
     select 1 from pg_policies
     where schemaname='public' and tablename='trade_entry_requests'
