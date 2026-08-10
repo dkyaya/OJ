@@ -19,10 +19,11 @@ From `app/`, run `npm ci`, `npm run copy:check`, `npm run lint`, `npm run typech
 1. Sign in with the verified email and password for an invited, active account. Supabase restores and refreshes sessions; OJ never handles credential storage.
 2. Create or edit research. OJ keeps an offline IndexedDB copy and saves the same revision to Supabase.
 3. Resolve a multi-device conflict explicitly if both copies changed.
-4. Record an entry only after confirming a real fill. The transactional entry operation creates the position and updates the idea together.
-5. Export one record or a full Obsidian-compatible journal whenever a Markdown copy is useful.
+4. Archive research-only ideas when they no longer belong in active views; restore them later with status, candidates, and revision history intact. Archive and restore require a live connection and the current revision.
+5. Record an entry only after confirming a real fill. The transactional entry operation creates the position and updates the idea together.
+6. Export one record or a full Obsidian-compatible journal whenever a Markdown copy is useful.
 
-See `docs/NAVIGATION_ARCHITECTURE.md`, `docs/SUPABASE_CANONICAL_MODEL.md`, and `docs/OBSIDIAN_EXPORT.md` for the current architecture.
+See `docs/NAVIGATION_ARCHITECTURE.md`, `docs/SUPABASE_CANONICAL_MODEL.md`, `docs/IDEA_ARCHIVE.md`, and `docs/OBSIDIAN_EXPORT.md` for the current architecture.
 
 ## Accounts
 

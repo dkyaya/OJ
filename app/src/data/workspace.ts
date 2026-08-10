@@ -9,7 +9,7 @@ const stringArray = (value: unknown) => Array.isArray(value) ? value.map(String)
 const dataText = (data: Record<string, unknown>, ...keys: string[]) => keys.map((key) => text(data[key])).find(Boolean);
 
 export const emptyWorkspace = (): Workspace => ({
-  authenticated: false, approved: false, demo: false, ideas: [], catalysts: [], positions: [], journal: [], opportunities: [], pendingReviews: 0, lastLoadedAt: new Date().toISOString(),
+  authenticated: false, approved: false, demo: false, ideas: [], archivedIdeas: [], catalysts: [], positions: [], journal: [], opportunities: [], pendingReviews: 0, lastLoadedAt: new Date().toISOString(),
 });
 
 function ideaStatus(row: Record<string, unknown>, data: Record<string, unknown>): IdeaStatus {
@@ -36,6 +36,10 @@ function mapCandidates(rows: Record<string, unknown>[]): Map<string, Candidate[]
   return mapped;
 }
 
+export function activeIdeaOpportunities(items: Opportunity[], archivedIdeaIds: ReadonlySet<string>) {
+  return items.filter((item) => !item.ideaId || !archivedIdeaIds.has(item.ideaId));
+}
+
 export async function loadWorkspace(): Promise<Workspace> {
   if (new URLSearchParams(location.search).get('demo') === '1') return { ...demoWorkspace, lastLoadedAt: new Date().toISOString() };
   if (!supabase) return emptyWorkspace();
@@ -58,7 +62,7 @@ export async function loadWorkspace(): Promise<Workspace> {
   if (!profileRow?.approved || profile.status !== 'active') return { ...emptyWorkspace(), authenticated: true, profile };
 
   const [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult] = await Promise.all([
-    supabase.from('trade_ideas').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
+    supabase.from('trade_ideas').select('*').order('updated_at', { ascending: false }),
     supabase.from('trade_candidates').select('*').order('updated_at', { ascending: false }),
     supabase.from('catalysts').select('*').is('deleted_at', null).order('event_at', { ascending: true }),
     supabase.from('catalyst_security_mappings').select('*').is('deleted_at', null),
@@ -72,21 +76,24 @@ export async function loadWorkspace(): Promise<Workspace> {
   if (firstError) throw new Error(firstError.message);
 
   const candidateMap = mapCandidates((candidatesResult.data || []) as Record<string, unknown>[]);
-  const opportunities: Opportunity[] = ((mappingsResult.data || []) as Record<string, unknown>[]).map((row) => ({
-    id: String(row.id), catalystId: String(row.catalyst_id), ideaId: row.trade_idea_id ? String(row.trade_idea_id) : undefined,
-    ticker: text(row.ticker, 'TBD'), exposure: text(row.exposure_type, 'direct'), sensitivity: text(row.sensitivity) || undefined,
-    rationale: text(row.rationale) || undefined, scores: record(row.opportunity_scores),
-  }));
-  const ideas: TradeIdea[] = ((ideasResult.data || []) as Record<string, unknown>[]).map((row) => {
+  const allIdeas: TradeIdea[] = ((ideasResult.data || []) as Record<string, unknown>[]).map((row) => {
     const data = record(row.data); const id = String(row.id);
     return {
       id, ticker: text(row.ticker, 'TBD'), strategy: text(row.strategy, 'TBD').replaceAll('-', ' '), bias: text(row.bias, 'TBD'), status: ideaStatus(row, data),
       confidence: text(row.confidence) || undefined, thesis: dataText(data, 'Thesis', 'thesis'), entryConditions: dataText(data, 'Entry conditions', 'Entry Conditions'),
       invalidation: dataText(data, 'Invalidation', 'invalidation'), plannedExit: dataText(data, 'Planned exit', 'Exit plan', 'Planned Exit'),
       catalystId: row.originating_catalyst_id ? String(row.originating_catalyst_id) : undefined, catalystCluster: text(row.catalyst_cluster_id) || undefined,
-      risk: number(data['Calculated max loss']), updatedAt: String(row.updated_at), revision: Number(row.revision || 1), candidates: candidateMap.get(id) || [], data,
+      risk: number(data['Calculated max loss']), archivedAt: row.deleted_at ? String(row.deleted_at) : undefined, updatedAt: String(row.updated_at), revision: Number(row.revision || 1), candidates: candidateMap.get(id) || [], data,
     };
   });
+  const archivedIdeas = allIdeas.filter((idea) => idea.archivedAt);
+  const archivedIdeaIds = new Set(archivedIdeas.map((idea) => idea.id));
+  const ideas = allIdeas.filter((idea) => !idea.archivedAt);
+  const opportunities = activeIdeaOpportunities(((mappingsResult.data || []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id), catalystId: String(row.catalyst_id), ideaId: row.trade_idea_id ? String(row.trade_idea_id) : undefined,
+    ticker: text(row.ticker, 'TBD'), exposure: text(row.exposure_type, 'direct'), sensitivity: text(row.sensitivity) || undefined,
+    rationale: text(row.rationale) || undefined, scores: record(row.opportunity_scores),
+  })), archivedIdeaIds);
   const catalysts: Catalyst[] = ((catalystsResult.data || []) as Record<string, unknown>[]).map((row) => {
     const id = String(row.id); const data = record(row.data);
     return {
@@ -116,7 +123,7 @@ export async function loadWorkspace(): Promise<Workspace> {
     calendarView: ['week','day'].includes(String(preferenceRow.calendar_view)) ? preferenceRow.calendar_view as 'week' | 'day' : 'month',
     compactCards: Boolean(preferenceRow.compact_cards), revision: Number(preferenceRow.revision || 1),
   } : undefined;
-  return { authenticated: true, approved: true, demo: false, ideas, catalysts, positions, journal, opportunities, profile, policy, preferences, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
+  return { authenticated: true, approved: true, demo: false, ideas, archivedIdeas, catalysts, positions, journal, opportunities, profile, policy, preferences, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
 }
 
 export async function savePreferences(input: Omit<AppPreferences, 'revision'>, currentRevision?: number) {

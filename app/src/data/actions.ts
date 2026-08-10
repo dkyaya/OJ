@@ -31,6 +31,29 @@ export async function recordEntry(input: { ideaId: string; contracts: number; op
   if (error) throw error; return String(data);
 }
 
+export function ideaLifecycleError(error: unknown) {
+  const detail = error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error || '');
+  if (/changed on another device|revision/i.test(detail)) return 'This idea changed on another device. OJ refreshed the latest version; try again if you still want to continue.';
+  if (/trade-backed|confirmed trade/i.test(detail)) return 'Ideas with confirmed trade history cannot be archived.';
+  if (/already archived/i.test(detail)) return 'This idea is already archived.';
+  if (/not archived/i.test(detail)) return 'This idea has already been restored.';
+  if (/not found|row-level security/i.test(detail)) return 'OJ could not change this idea. Refresh and confirm that it still belongs to this account.';
+  return 'OJ could not update the idea archive. Nothing was changed.';
+}
+
+export async function setTradeIdeaArchived(input: { ideaId: string; expectedRevision: number; archived: boolean }) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Connect to the internet to archive or restore an idea. OJ did not queue this change.');
+  await approvedUser();
+  const { data, error } = await supabase!.rpc('set_trade_idea_archived', {
+    p_trade_idea_id: input.ideaId,
+    p_expected_revision: input.expectedRevision,
+    p_archived: input.archived,
+  });
+  if (error) throw new Error(ideaLifecycleError(error));
+  if (typeof data !== 'number') throw new Error('OJ could not confirm the idea archive change. Refresh before trying again.');
+  return data;
+}
+
 export async function saveJournalReview(input: { ideaId: string; summary: string; lesson?: string; processRating?: number }) {
   const user = await approvedUser();
   const { data, error } = await supabase!.from('journal_reviews').insert({
