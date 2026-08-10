@@ -4,6 +4,13 @@ project_id = "ljpcgvqsrgpssqobeznp"
 site_url = "https://dkyaya.github.io/OJ/"
 additional_redirect_urls = ["http://localhost:5173/**", "https://dkyaya.github.io/OJ/**"]
 
+[auth.email]
+otp_expiry = 3600
+
+[auth.email.template.invite]
+subject = "You're invited to OJ"
+content_path = "./supabase/templates/invite.html"
+
 [functions.submit-formalization]
 verify_jwt = true
 [functions.formalization-status]

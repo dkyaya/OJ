@@ -4,6 +4,7 @@ const allowedOrigins = new Set([
   Deno.env.get('OJ_ALLOWED_ORIGIN') || 'https://dkyaya.github.io',
   'http://localhost:5173',
 ]);
+const inviteTtlMs = 60 * 60 * 1000;
 
 const corsFor = (req: Request) => {
   const origin = req.headers.get('origin');
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
       return json(req, { error: 'invitation_unavailable' }, 409);
     }
 
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + inviteTtlMs).toISOString();
     const invitation = await admin.from('account_invites').upsert({
       email_normalized: email,
       invited_by: user.id,
@@ -70,9 +71,9 @@ Deno.serve(async (req) => {
     }, { onConflict: 'email_normalized' }).select('id').single();
     if (invitation.error) return json(req, { error: 'invitation_failed' }, 500);
 
-    const redirectTo = 'https://dkyaya.github.io/OJ/?auth=activate';
-    const { error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
+    const { error } = await admin.auth.admin.inviteUserByEmail(email);
     if (error) {
+      await admin.from('account_invites').update({ status: 'revoked' }).eq('id', invitation.data.id).eq('status', 'pending');
       console.error('invite_delivery_failed');
       return json(req, { error: 'invitation_failed' }, 502);
     }

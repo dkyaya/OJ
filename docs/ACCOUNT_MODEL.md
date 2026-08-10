@@ -9,4 +9,6 @@ App roles are deliberately minimal:
 
 Statuses are `pending`, `invited`, `active`, and `disabled`. Approval plus `active` status is required for private OJ data. Browser updates are limited to the signed-in user's display name and initials; ID, email, approval, role, and status are protected by grants, RLS, and a trigger.
 
+An Auth invitation bootstraps a `member` / `invited` / unapproved profile only when its normalized email matches a live pending application invitation. A verified invite OTP does not by itself grant OJ access. Only the strict `activate_invited_account()` RPC can atomically approve that member and accept the matching invitation after the invited identity has a password.
+
 These app-level roles are not future workspace roles. Phase 5 can reference the same stable profile identity without duplicating credentials or identity tables.

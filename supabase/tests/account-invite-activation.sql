@@ -12,10 +12,14 @@ values
   ('phase45-invited@example.invalid','33333333-3333-4333-8333-333333333333','pending',now()+interval '1 hour'),
   ('phase45-revoked@example.invalid','33333333-3333-4333-8333-333333333333','pending',now()+interval '1 hour');
 
+insert into public.account_invites(email_normalized,invited_by,status,created_at,expires_at)
+values ('phase45-expired@example.invalid','33333333-3333-4333-8333-333333333333','pending',now()-interval '2 hours',now()-interval '1 hour');
+
 insert into auth.users(id,email,email_confirmed_at,encrypted_password) values
   ('44444444-4444-4444-8444-444444444444','phase45-invited@example.invalid',now(),encode(gen_random_bytes(32),'hex')),
   ('55555555-5555-4555-8555-555555555555','phase45-uninvited@example.invalid',now(),encode(gen_random_bytes(32),'hex')),
-  ('66666666-6666-4666-8666-666666666666','phase45-revoked@example.invalid',now(),encode(gen_random_bytes(32),'hex'));
+  ('66666666-6666-4666-8666-666666666666','phase45-revoked@example.invalid',now(),encode(gen_random_bytes(32),'hex')),
+  ('77777777-7777-4777-8777-777777777777','phase45-expired@example.invalid',now(),encode(gen_random_bytes(32),'hex'));
 
 update public.account_invites
 set status='revoked'
@@ -68,6 +72,18 @@ begin
   begin
     perform public.activate_invited_account();
     raise exception 'revoked activation unexpectedly succeeded';
+  exception when raise_exception then
+    if sqlerrm <> 'valid invitation required' then raise; end if;
+  end;
+end
+$test$;
+
+select set_config('request.jwt.claim.sub','77777777-7777-4777-8777-777777777777',true);
+do $test$
+begin
+  begin
+    perform public.activate_invited_account();
+    raise exception 'expired activation unexpectedly succeeded';
   exception when raise_exception then
     if sqlerrm <> 'valid invitation required' then raise; end if;
   end;

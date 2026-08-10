@@ -30,7 +30,7 @@ function clearAuthCallback() {
 export default function App() {
   const [route, setRoute] = useState<AppPath>(routeFromHash); const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [authMode, setAuthMode] = useState<AuthMode>(() => authModeFromUrl(location.href)); const [workflow, setWorkflow] = useState<'ticker' | 'catalyst' | null>(null); const [dark, setDark] = useState(() => localStorage.getItem('oj-theme') !== 'light');
-  const splashStartedAt = useRef(performance.now()); const splashCompletionScheduled = useRef(false);
+  const splashStartedAt = useRef(performance.now()); const splashCompletionScheduled = useRef(false); const authModeRef = useRef(authMode);
   const finishInitialLoad = useCallback(() => {
     if (splashCompletionScheduled.current) return;
     splashCompletionScheduled.current = true;
@@ -47,6 +47,7 @@ export default function App() {
   const finishAuth = useCallback(() => { clearAuthCallback(); setAuthMode('sign-in'); void refresh(); }, [refresh]);
 
   useEffect(() => { const hash = () => setRoute(routeFromHash()); window.addEventListener('hashchange', hash); return () => window.removeEventListener('hashchange', hash); }, []);
+  useEffect(() => { authModeRef.current = authMode; }, [authMode]);
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; localStorage.setItem('oj-theme', dark ? 'dark' : 'light'); }, [dark]);
   useEffect(() => {
     void refresh();
@@ -62,7 +63,7 @@ export default function App() {
       if (event === 'SIGNED_OUT') {
         const previousOwner = localStorage.getItem('oj-cache-owner');
         if (previousOwner) void clearOwnerDrafts(previousOwner);
-        localStorage.removeItem('oj-cache-owner'); setWorkspace(emptyWorkspace()); setWorkflow(null); setAuthMode('sign-in');
+        localStorage.removeItem('oj-cache-owner'); setWorkspace(emptyWorkspace()); setWorkflow(null); if (authModeRef.current !== 'activate') setAuthMode('sign-in');
       }
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') void refresh();
     });
@@ -72,7 +73,7 @@ export default function App() {
   const openRisk = useMemo(() => workspace.positions.filter((item) => item.status === 'active').reduce((sum, item) => sum + (item.maxRisk || 0), 0), [workspace.positions]);
   if (loading) return <LoadingScreen />;
   const callbackFlow = authMode === 'activate' || authMode === 'reset';
-  if ((!workspace.authenticated && !workspace.demo) || callbackFlow) return <AuthScreen mode={authMode} authenticated={workspace.authenticated} onMode={setAuthMode} onComplete={finishAuth} />;
+  if ((!workspace.authenticated && !workspace.demo) || callbackFlow) return <AuthScreen mode={authMode} authenticated={workspace.authenticated} onMode={setAuthMode} onComplete={finishAuth} onLocalStateCleared={() => { setWorkspace(emptyWorkspace()); setWorkflow(null); }} />;
   if (workspace.authenticated && !workspace.approved) return <main className="auth-screen"><section className="auth-card" aria-labelledby="invite-required-title"><img src={`${import.meta.env.BASE_URL}brand/oj-logo-primary-light.svg`} alt="OJ" /><header><span className="eyebrow">Options Journey</span><h1 id="invite-required-title">Invite Required</h1><p>This email does not have access to OJ.</p></header><button onClick={() => void supabase?.auth.signOut({ scope: 'local' })}><LogOut size={16} />Sign Out This Device</button><footer><span>Private access</span><span>No brokerage connection</span></footer></section></main>;
 
   const page = route === '/' ? <OverviewPage workspace={workspace} onBuildIdea={() => setWorkflow('ticker')} />
