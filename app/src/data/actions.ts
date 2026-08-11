@@ -34,6 +34,7 @@ export async function recordEntry(input: { ideaId: string; contracts: number; op
 
 export function ideaLifecycleError(error: unknown) {
   const detail = error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error || '');
+  if (/could not find the function|function .* does not exist|schema cache/i.test(detail)) return 'OJ is finishing its database update. Refresh in a moment and try again.';
   if (/changed on another device|revision/i.test(detail)) return 'This idea changed on another device. OJ refreshed the latest version; try again if you still want to continue.';
   if (/trade-backed|confirmed trade/i.test(detail)) return 'Ideas with confirmed trade history cannot be archived.';
   if (/already archived/i.test(detail)) return 'This idea is already archived.';
@@ -57,6 +58,7 @@ export async function setTradeIdeaArchived(input: { ideaId: string; expectedRevi
 
 export function ideaDeletionError(error: unknown) {
   const detail = error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error || '');
+  if (/could not find the function|function .* does not exist|schema cache/i.test(detail)) return 'OJ is finishing its database update. Refresh in a moment and try again.';
   if (/changed on another device|revision/i.test(detail)) return 'This idea changed on another device. OJ refreshed the latest version; review it before trying again.';
   if (/archive the idea/i.test(detail)) return 'Archive this idea before deleting it permanently.';
   if (/confirmation did not match/i.test(detail)) return 'The deletion phrase did not match. Nothing was deleted.';

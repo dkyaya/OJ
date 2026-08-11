@@ -6,6 +6,12 @@ describe('idea lifecycle error copy', () => {
     expect(ideaLifecycleError(new Error('trade idea changed on another device'))).toContain('changed on another device');
   });
 
+  it('does not mislabel a missing RPC parameter name as a revision conflict', () => {
+    const missing = new Error('Could not find the function public.set_trade_idea_archived(p_archived, p_expected_revision, p_trade_idea_id) in the schema cache');
+    expect(ideaLifecycleError(missing)).toBe('OJ is finishing its database update. Refresh in a moment and try again.');
+    expect(ideaDeletionError(missing)).toBe('OJ is finishing its database update. Refresh in a moment and try again.');
+  });
+
   it('explains the canonical trade-history restriction', () => {
     expect(ideaLifecycleError({ message: 'trade-backed ideas cannot be archived' })).toBe('Ideas with confirmed trade history cannot be archived.');
   });
