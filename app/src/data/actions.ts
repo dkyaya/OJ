@@ -90,14 +90,19 @@ export async function saveJournalReview(input: { ideaId: string; summary: string
   if (error) throw error; return data;
 }
 
-export async function saveCatalystRecord(input: { event: string; type: string; date: string; sensitivity?: string; source?: string; cluster?: string }) {
+export async function saveCatalystRecord(input: { workspaceId: string; event: string; type: string; date: string; time?: string; sensitivity?: string; source?: string; cluster?: string }) {
   const user = await approvedUser();
+  if (!input.workspaceId) throw new Error('A research workspace is required.');
   if (!input.event.trim() || !input.date) throw new Error('Add an event and date.');
   const { data, error } = await supabase!.from('catalysts').insert({
     user_id: user.id,
+    workspace_id: input.workspaceId,
+    created_by: user.id,
+    updated_by: user.id,
+    visibility: 'workspace',
     event: input.event.trim(),
     event_type: input.type || 'Other',
-    event_at: `${input.date}T12:00:00.000Z`,
+    event_at: new Date(`${input.date}T${input.time || '08:30'}:00`).toISOString(),
     expected_sensitivity: input.sensitivity || null,
     release_source: input.source?.trim() || null,
     catalyst_cluster_id: input.cluster?.trim() || null,

@@ -24,6 +24,8 @@ From `app/`, run `npm ci`, `npm run copy:check`, `npm run lint`, `npm run typech
 6. Record an entry only after confirming a real fill. The transactional entry operation creates the position and updates the idea together.
 7. Export one record or a full Obsidian-compatible journal whenever a Markdown copy is useful.
 
+Research workspaces add optional collaboration without changing that owner boundary. Members can share catalyst facts, evidence, reviewed thesis summaries, research missions, explicitly shared forecasts, and factual debriefs. Account values, policies, trades, private Ideas, private forecasts, journal entries, and personal lessons never become workspace data. See `docs/WORKSPACE_MODEL.md`, `docs/SHARED_RESEARCH.md`, `docs/RESEARCH_MISSIONS.md`, and `docs/FORECAST_MODEL.md`.
+
 See `docs/NAVIGATION_ARCHITECTURE.md`, `docs/SUPABASE_CANONICAL_MODEL.md`, `docs/IDEA_ARCHIVE.md`, and `docs/OBSIDIAN_EXPORT.md` for the current architecture.
 
 ## Accounts

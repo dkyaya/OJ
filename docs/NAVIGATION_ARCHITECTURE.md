@@ -11,6 +11,6 @@ OJ has exactly six primary product sections.
 | Journal | `/journal` | Check-ins, reviews, and full journal export. |
 | Insights | `/insights` | Patterns derived from canonical records. |
 
-Settings is a secondary route at `/settings`. Desktop shows the six sections in the sidebar. Mobile shows Overview, Catalysts, Ideas, and Trades directly; More opens a bottom sheet containing Journal, Insights, Settings, and Build Idea. Every control has a text label and remains keyboard reachable.
+Settings is a secondary route at `/settings`. Workspace is a secondary route at `/workspace`; it summarizes members, missions, questions, debriefs, and allowlisted activity without becoming a seventh primary tab. Desktop exposes Workspace below Build Idea. Mobile shows Overview, Catalysts, Ideas, and Trades directly; More opens a bottom sheet containing Journal, Insights, Workspace, Settings, and Build Idea. Every control has a text label and remains keyboard reachable.
 
 Legacy hashes for Trade Ideas, Research, Active Trades, Closed Trades, and Analytics normalize to their current section so existing links do not break.

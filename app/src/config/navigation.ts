@@ -1,7 +1,7 @@
 import { BarChart3, CalendarDays, LayoutDashboard, Lightbulb, NotebookPen, TrendingUp, type LucideIcon } from 'lucide-react';
 
 export type PrimaryPath = '/' | '/catalysts' | '/ideas' | '/trades' | '/journal' | '/insights';
-export type AppPath = PrimaryPath | '/settings';
+export type AppPath = PrimaryPath | '/workspace' | '/settings';
 
 export type NavItem = {
   path: PrimaryPath;
@@ -30,7 +30,7 @@ export const legacyRoutes: Record<string, AppPath> = {
 export function normalizePath(hash = window.location.hash): { path: AppPath; legacy?: string } {
   const raw = (hash.replace(/^#/, '').split('?')[0] || '/').replace(/\/$/, '') || '/';
   if (legacyRoutes[raw]) return { path: legacyRoutes[raw], legacy: raw };
-  if (raw === '/settings') return { path: '/settings' };
+  if (raw === '/settings' || raw === '/workspace') return { path: raw };
   const primary = primaryNavigation.find((item) => item.path === raw);
   return { path: primary?.path || '/' };
 }
