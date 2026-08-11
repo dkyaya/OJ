@@ -21,3 +21,13 @@ Supabase Auth owns email/password credentials and persistent sessions. `profiles
 `record_trade_entry` is an atomic, narrowly granted caller-context operation. It inserts one owner-scoped command; a non-exposed private trigger validates and applies the lifecycle change. Direct browser inserts and updates on confirmed positions are revoked. The operation requires an approved user, explicit actual-fill confirmation, eligible research status, positive contracts, a timestamp, maximum risk, and a current account policy; it blocks aggregate risk above the policy limit. It creates a confirmed position and entry and advances the source idea together. OJ never talks to a brokerage.
 
 Legacy `formalization_jobs` and related Edge Functions remain isolated for optional Markdown mirrors and exports. Ordinary saves do not invoke them.
+
+## Shared research families
+
+`workspaces`, `workspace_members`, and server-managed `workspace_invites` add an authorization layer that is independent of account roles. Shared catalysts and security mappings carry a workspace scope; private research annotations remain user-owned.
+
+`evidence_cards`, `evidence_responses`, `shared_theses`, and `shared_thesis_responses` contain explicit collaboration artifacts. A shared thesis stores only ticker, bias, normalized defined-risk strategy, reviewed summary, optional expected move, and optional confidence. `fork_shared_thesis` creates a new owner-scoped Idea; later edits never sync back across the boundary.
+
+`research_missions`, assignments, questions, liquidity observations, and checkpoints coordinate catalyst research. `complete_research_mission` requires evidence and an event-verification checkpoint, but accepts Trade, Watch, or No Trade.
+
+`personal_forecasts` remain user-owned. Visibility can explicitly expose a forecast to workspace members, while `forecast_revisions` preserve immutable draft and locked snapshots. Forecast writes and locks use server-checked RPCs that enforce the catalyst timestamp cutoff. Debriefs can be private or shared; personal lessons remain in the private Journal.

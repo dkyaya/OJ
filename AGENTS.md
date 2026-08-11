@@ -12,7 +12,11 @@
 - Supabase Auth exclusively manages credentials. Never request, store, log, commit, or relay plaintext passwords, password hashes, reset tokens, refresh tokens, or service-role secrets.
 - OJ is invite-only. Do not add public signup, browser-controlled approval, browser role escalation, or readable invitation policies. Owner invitations must pass through the authenticated owner-only Edge Function.
 - Every private IndexedDB record, draft, conflict, and retry operation must be partitioned by the stable Supabase user ID. Sign-out must clear private in-memory state and the current user's cache without removing harmless global display preferences.
-- Keep app-level `owner` / `member` roles separate from future workspace roles. Do not begin workspace, collaboration, mission, or forecast phases without a later explicit task.
+- Keep app-level `owner` / `member` roles separate from workspace `owner` / `member` roles. Workspace roles authorize shared research only; they never grant access to accounts, risk policy, trades, journal entries, private Ideas, or private forecasts.
+- OJ remains solo-first. Collaboration features must work with one member, optional roles, and a valid No Trade outcome. Use initials instead of profile photos.
+- Shared records are restricted to catalyst facts, evidence, responses, reviewed thesis summaries, mission coordination, explicitly shared forecast fields, and factual debriefs. Private conclusions and all financial/execution data stay user-owned.
+- Shared activity is an allowlist, not a general audit stream. Never add activity events for balances, risk, trades, fills, private Ideas, private forecasts, journal text, or personal lessons.
+- Forecast creation and revision must honor the server-side catalyst cutoff. Preserve append-only draft and locked snapshots; never calculate calibration from unlocked or outcome-less forecasts.
 - Invitation emails must never depend on a GET request consuming a one-time credential. Use a human-entered code and a scanner-safe application link.
 - Invite activation must clear conflicting local auth and private cache state before OTP verification. Never global-sign-out an owner merely to activate another account in one browser.
 - Call `activate_invited_account()` only after the current authenticated session email exactly matches the normalized invited email submitted in the activation form.
