@@ -1,15 +1,17 @@
 import { supabase } from '../lib/supabase';
 import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, IdeaStatus, JournalRecord, Opportunity, Position, TradeIdea, Workspace } from '../types/domain';
 import { demoWorkspace } from './demo';
+import { emptyCollaboration, loadCollaboration } from './collaboration';
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
 const number = (value: unknown) => typeof value === 'number' ? value : typeof value === 'string' && Number.isFinite(Number(value)) ? Number(value) : undefined;
 const stringArray = (value: unknown) => Array.isArray(value) ? value.map(String) : [];
 const dataText = (data: Record<string, unknown>, ...keys: string[]) => keys.map((key) => text(data[key])).find(Boolean);
+const optionalString = (value: unknown) => value === null || value === undefined || value === '' ? undefined : String(value);
 
 export const emptyWorkspace = (): Workspace => ({
-  authenticated: false, approved: false, demo: false, ideas: [], archivedIdeas: [], catalysts: [], positions: [], journal: [], opportunities: [], pendingReviews: 0, lastLoadedAt: new Date().toISOString(),
+  authenticated: false, approved: false, demo: false, ideas: [], archivedIdeas: [], catalysts: [], positions: [], journal: [], opportunities: [], ...emptyCollaboration(), pendingReviews: 0, lastLoadedAt: new Date().toISOString(),
 });
 
 function ideaStatus(row: Record<string, unknown>, data: Record<string, unknown>): IdeaStatus {
@@ -61,7 +63,7 @@ export async function loadWorkspace(): Promise<Workspace> {
   };
   if (!profileRow?.approved || profile.status !== 'active') return { ...emptyWorkspace(), authenticated: true, profile };
 
-  const [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult] = await Promise.all([
+  const [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult, collaboration] = await Promise.all([
     supabase.from('trade_ideas').select('*').order('updated_at', { ascending: false }),
     supabase.from('trade_candidates').select('*').order('updated_at', { ascending: false }),
     supabase.from('catalysts').select('*').is('deleted_at', null).order('event_at', { ascending: true }),
@@ -71,6 +73,7 @@ export async function loadWorkspace(): Promise<Workspace> {
     supabase.from('journal_reviews').select('*').order('created_at', { ascending: false }),
     supabase.from('account_policies').select('*').maybeSingle(),
     supabase.from('application_preferences').select('*').maybeSingle(),
+    loadCollaboration(user.id),
   ]);
   const firstError = [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult].find((result) => result.error)?.error;
   if (firstError) throw new Error(firstError.message);
@@ -97,10 +100,11 @@ export async function loadWorkspace(): Promise<Workspace> {
   const catalysts: Catalyst[] = ((catalystsResult.data || []) as Record<string, unknown>[]).map((row) => {
     const id = String(row.id); const data = record(row.data);
     return {
-      id, event: text(row.event, 'Untitled event'), type: text(row.event_type, 'Other'), date: row.event_at ? String(row.event_at).slice(0, 10) : undefined,
+      id, event: text(row.event, 'Untitled event'), type: text(row.event_type, 'Other'), date: row.event_at ? String(row.event_at).slice(0, 10) : undefined, eventAt: optionalString(row.event_at),
       sensitivity: text(row.expected_sensitivity || data.sensitivity) || undefined, status: text(row.research_status, 'researching'),
       source: text(row.release_source || data.scheduled_source) || undefined, cluster: text(row.catalyst_cluster_id) || undefined,
       linkedTickers: opportunities.filter((item) => item.catalystId === id).map((item) => item.ticker), revision: Number(row.revision || 1), data,
+      ownerId: optionalString(row.user_id), workspaceId: optionalString(row.workspace_id), createdBy: optionalString(row.created_by), updatedBy: optionalString(row.updated_by), visibility: row.visibility === 'workspace' ? 'workspace' : 'private',
     };
   });
   const positions: Position[] = ((tradesResult.data || []) as Record<string, unknown>[]).map((row) => ({
@@ -123,7 +127,7 @@ export async function loadWorkspace(): Promise<Workspace> {
     calendarView: ['week','day'].includes(String(preferenceRow.calendar_view)) ? preferenceRow.calendar_view as 'week' | 'day' : 'month',
     compactCards: Boolean(preferenceRow.compact_cards), revision: Number(preferenceRow.revision || 1),
   } : undefined;
-  return { authenticated: true, approved: true, demo: false, ideas, archivedIdeas, catalysts, positions, journal, opportunities, profile, policy, preferences, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
+  return { authenticated: true, approved: true, demo: false, ideas, archivedIdeas, catalysts, positions, journal, opportunities, profile, policy, preferences, ...collaboration, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
 }
 
 export async function savePreferences(input: Omit<AppPreferences, 'revision'>, currentRevision?: number) {

@@ -6,6 +6,7 @@ import { deleteTradeIdea, ideaDeletionError, ideaLifecycleError, setTradeIdeaArc
 import { downloadText, tradeMarkdown } from '../features/export/markdown';
 import { canConfirmIdeaDelete, deleteConfirmationFor, ideasForFilter, type IdeaFilter } from '../lib/idea-lifecycle';
 import type { TradeIdea, Workspace } from '../types/domain';
+import { SharedThesisPanel } from '../components/SharedThesisPanel';
 
 function exportIdea(idea: TradeIdea, workspace: Workspace) {
   downloadText(`${idea.ticker}-${idea.id.slice(0, 8)}.md`, tradeMarkdown(idea, workspace.positions.find((item) => item.ideaId === idea.id)));
@@ -139,6 +140,7 @@ export function IdeasPage({ workspace, onBuildIdea, onSaved, initialFilter = 'al
         <ResearchDetails idea={idea} tradeBacked={tradeBacked} deleteBlocked={deleteBlocked} busy={busy} archived={archived} onArchive={() => setPendingArchive(idea)} onDelete={() => setPendingDelete(idea)} />
       </div>;
     })}</div> : <EmptyCard title={filter === 'archived' ? 'No Archived Ideas' : 'No Matching Ideas'} subtitle={filter === 'archived' ? 'Archived research will remain available here until you restore it.' : 'Research may end with no trade. New ideas remain drafts until you decide.'} action={filter === 'archived' ? undefined : <button onClick={onBuildIdea}>Build Idea</button>} />}
+    {filter !== 'archived' && <SharedThesisPanel workspace={workspace} onSaved={onSaved} />}
     <ArchiveIdeaDialog idea={pendingArchive} busy={Boolean(pendingArchive && busyIdeaId === pendingArchive.id)} onCancel={() => setPendingArchive(undefined)} onConfirm={() => pendingArchive && void changeLifecycle(pendingArchive, true)} />
     <DeleteIdeaDialog idea={pendingDelete} busy={Boolean(pendingDelete && busyIdeaId === pendingDelete.id)} onCancel={() => setPendingDelete(undefined)} onConfirm={(confirmation) => pendingDelete && void permanentlyDelete(pendingDelete, confirmation)} />
   </div>;

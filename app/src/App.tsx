@@ -16,6 +16,7 @@ import { JournalPage } from './pages/JournalPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TradesPage } from './pages/TradesPage';
+import { WorkspacePage } from './pages/WorkspacePage';
 import { clearOwnerDrafts } from './storage/drafts';
 import type { Workspace } from './types/domain';
 
@@ -82,7 +83,8 @@ export default function App() {
         : route === '/trades' ? <TradesPage workspace={workspace} onSaved={refresh} />
           : route === '/journal' ? <JournalPage workspace={workspace} onSaved={refresh} />
             : route === '/insights' ? <InsightsPage workspace={workspace} />
-              : <SettingsPage workspace={workspace} onSaved={refresh} />;
+              : route === '/workspace' ? <WorkspacePage workspace={workspace} />
+                : <SettingsPage workspace={workspace} onSaved={refresh} />;
   const profile = workspace.profile;
   return <><AppShell current={route} dark={dark} userId={profile?.id} email={profile?.email} onRefresh={refresh} onTheme={() => setDark(!dark)} onBuildIdea={() => profile && setWorkflow('ticker')}>{error && <div className="app-error" role="alert">{error}</div>}{workspace.demo && <div className="demo-banner">Synthetic preview data</div>}{page}</AppShell>{profile && <Workflow open={workflow !== null} onClose={() => setWorkflow(null)} ownerId={profile.id} initialMode={workflow || 'ticker'} catalysts={workspace.catalysts.map((item) => ({ id: item.id, event: item.event, date: item.date }))} maximumRisk={workspace.policy?.maximumOpenRisk} openRisk={openRisk} />}</>;
 }

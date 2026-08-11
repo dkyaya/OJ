@@ -7,4 +7,8 @@ describe('primary navigation', () => {
   it('maps legacy bookmarks to the new architecture', () => {
     expect(normalizePath('#/trade-ideas').path).toBe('/ideas'); expect(normalizePath('#/active-trades').path).toBe('/trades'); expect(normalizePath('#/analytics').path).toBe('/insights');
   });
+  it('keeps Workspace secondary but directly routable', () => {
+    expect(primaryNavigation.map((item) => String(item.path))).not.toContain('/workspace');
+    expect(normalizePath('#/workspace').path).toBe('/workspace');
+  });
 });

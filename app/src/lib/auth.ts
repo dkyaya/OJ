@@ -150,8 +150,8 @@ export async function updateAccountProfile(displayName: string, initials: string
   if (error) throw new Error('Profile changes could not be saved.');
 }
 
-export async function inviteAccount(email: string) {
+export async function inviteAccount(email: string, workspaceId?: string) {
   if (!supabase) throw new Error('OJ cloud is not configured.');
-  const { error } = await supabase.functions.invoke('invite-account', { body: { email: email.trim() } });
+  const { error } = await supabase.functions.invoke('invite-account', { body: { email: email.trim(), workspace_id: workspaceId } });
   if (error) throw new Error(friendlyAuthError(error, 'invite'));
 }
