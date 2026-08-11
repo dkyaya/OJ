@@ -1,18 +1,68 @@
 name: Deploy OJ Supabase
-on: { workflow_dispatch: {} }
-permissions: { contents: read }
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oj-supabase-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    name: Reconcile and deploy Supabase
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       PROJECT_REF: ljpcgvqsrgpssqobeznp
     steps:
-      - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
-        with: { version: latest }
-      - name: Link and apply migrations
-        run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD" && supabase db push --password "$SUPABASE_DB_PASSWORD"
-      - name: Deploy Edge Functions
-        run: supabase functions deploy submit-formalization --project-ref "$PROJECT_REF" && supabase functions deploy formalization-status --project-ref "$PROJECT_REF" && supabase functions deploy reconcile-publication --project-ref "$PROJECT_REF" --no-verify-jwt
+      - name: Check out the deployment source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]] || missing+=(SUPABASE_ACCESS_TOKEN)
+          [[ -n "${SUPABASE_DB_PASSWORD:-}" ]] || missing+=(SUPABASE_DB_PASSWORD)
+          if ((${#missing[@]} > 0)); then
+            printf 'Missing required GitHub Actions secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
+      - name: Install the pinned Supabase CLI
+        uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3
+        with:
+          version: 2.113.0
+
+      - name: Report the deployment tool version
+        run: supabase --version
+
+      - name: Link the production project
+        run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Compare local and production migration history
+        run: supabase migration list --linked --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Preview database migrations
+        run: supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Apply database migrations
+        run: supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Deploy JWT-protected Edge Functions
+        run: |
+          supabase functions deploy submit-formalization --project-ref "$PROJECT_REF"
+          supabase functions deploy formalization-status --project-ref "$PROJECT_REF"
+          supabase functions deploy invite-account --project-ref "$PROJECT_REF"
+
+      - name: Deploy the signed reconciliation webhook
+        run: supabase functions deploy reconcile-publication --project-ref "$PROJECT_REF" --no-verify-jwt
+
+      - name: Confirm production migration history
+        run: supabase migration list --linked --password "$SUPABASE_DB_PASSWORD"

@@ -14,9 +14,12 @@ Apply every file under `supabase/migrations/` in timestamp order, then deploy:
 
 - optional `submit-formalization` with JWT verification for an owner-requested mirror;
 - optional `formalization-status` with JWT verification;
+- `invite-account` with JWT verification for owner-mediated account invitations;
 - `reconcile-publication` without gateway JWT because it validates a timestamped, nonce-protected HMAC request and invokes one trusted transactional RPC.
 
-For local development, install the Supabase CLI, run `supabase start`, `supabase db reset`, and `supabase test db`. Link and push to production only with management credentials stored outside source. Production migrations and function versions are also reproducible through `.github/workflows/deploy-supabase.yml` once its optional deployment secrets are configured.
+For local development, install the Supabase CLI, run `supabase start`, `supabase db reset`, and `supabase test db`. Link and push to production only with management credentials stored outside source. Production deployment runs manually through `.github/workflows/deploy-supabase.yml`. It validates the required secrets, compares the local and production migration ledgers, performs a dry run, applies only pending migrations, and deploys all four Edge Functions. The workflow pins its CLI and action versions and serializes production runs.
+
+Migration filenames in Git use the exact timestamp versions recorded in `supabase_migrations.schema_migrations`. Never rename an applied migration or repair production history merely to accommodate a conflicting local timestamp. Reconcile the repository to the verified production ledger and preserve the SQL unchanged.
 
 ## Canonical boundary
 
