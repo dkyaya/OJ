@@ -47,11 +47,13 @@ export function routeMotionDirection(previous: AppPath, next: AppPath): RouteMot
   return nextIndex > previousIndex ? 'forward' : 'backward';
 }
 
-export function swipeNavigationTarget(current: AppPath, distance: number, threshold = 48): PrimaryPath | undefined {
+export function swipeNavigationTarget(current: AppPath, distance: number, slotWidth = 52, threshold = 24): PrimaryPath | undefined {
   if (Math.abs(distance) < threshold) return undefined;
   const currentIndex = primaryNavigation.findIndex((item) => item.path === current);
   if (currentIndex < 0) return undefined;
-  return primaryNavigation[currentIndex + (distance < 0 ? 1 : -1)]?.path;
+  const steps = Math.max(1, Math.round(Math.abs(distance) / Math.max(slotWidth, 1)));
+  const targetIndex = Math.max(0, Math.min(primaryNavigation.length - 1, currentIndex + (distance > 0 ? steps : -steps)));
+  return targetIndex === currentIndex ? undefined : primaryNavigation[targetIndex].path;
 }
 
 export function catalystIdFromHash(hash = typeof window === 'undefined' ? '' : window.location.hash) {

@@ -23,12 +23,13 @@ describe('primary navigation', () => {
     expect(routeMotionDirection('/journal', '/trades')).toBe('backward');
     expect(routeMotionDirection('/settings', '/')).toBe('neutral');
   });
-  it('moves one primary section per intentional navbar swipe', () => {
-    expect(swipeNavigationTarget('/ideas', -72)).toBe('/trades');
-    expect(swipeNavigationTarget('/ideas', 72)).toBe('/catalysts');
-    expect(swipeNavigationTarget('/ideas', -20)).toBeUndefined();
-    expect(swipeNavigationTarget('/', 72)).toBeUndefined();
-    expect(swipeNavigationTarget('/insights', -72)).toBeUndefined();
-    expect(swipeNavigationTarget('/workspace', -72)).toBeUndefined();
+  it('drags the mobile selection to the matching primary section', () => {
+    expect(swipeNavigationTarget('/ideas', 72)).toBe('/trades');
+    expect(swipeNavigationTarget('/ideas', -72)).toBe('/catalysts');
+    expect(swipeNavigationTarget('/ideas', 118)).toBe('/journal');
+    expect(swipeNavigationTarget('/ideas', 20)).toBeUndefined();
+    expect(swipeNavigationTarget('/', -72)).toBeUndefined();
+    expect(swipeNavigationTarget('/insights', 72)).toBeUndefined();
+    expect(swipeNavigationTarget('/workspace', 72)).toBeUndefined();
   });
 });
