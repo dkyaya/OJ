@@ -1,6 +1,6 @@
 import type { Workspace } from '../types/domain';
 
-export type IdeaFilter = 'all' | 'watchlist' | 'ready' | 'deferred' | 'archived';
+export type IdeaFilter = 'all' | 'draft' | 'watchlist' | 'ready' | 'deferred' | 'rejected' | 'invalidated' | 'archived';
 
 export function deleteConfirmationFor(ticker: string) {
   return `DELETE ${ticker}`;

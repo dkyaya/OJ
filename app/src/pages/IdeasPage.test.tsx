@@ -4,6 +4,7 @@ import { demoWorkspace } from '../data/demo';
 import { canConfirmIdeaDelete, deleteConfirmationFor, ideasForFilter } from '../lib/idea-lifecycle';
 import type { Position, TradeIdea, Workspace } from '../types/domain';
 import { ArchiveIdeaDialog, DeleteIdeaDialog, IdeasPage } from './IdeasPage';
+import { Workflow } from '../components/Workflow';
 
 const archivedIdea: TradeIdea = {
   ...demoWorkspace.ideas[0],
@@ -33,7 +34,8 @@ describe('idea archive presentation', () => {
     expect(html).toContain('Export');
     expect(html).toContain('Delete Permanently');
     expect(html).toContain('Permanent deletion');
-    expect(html).toContain('Balanced');
+    expect(html).toContain('Candidate');
+    expect(html).not.toContain('Balanced');
     expect(html).not.toContain('Archive unavailable');
     expect(html).not.toContain('Archive Idea');
   });
@@ -42,6 +44,14 @@ describe('idea archive presentation', () => {
     const html = renderToStaticMarkup(<IdeasPage workspace={workspace({ archivedIdeas: [] })} onBuildIdea={() => undefined} onSaved={() => undefined} />);
     expect(html).toContain('Archive Idea');
     expect(html).not.toContain('Delete Permanently');
+  });
+
+  it('shows the canonical Idea editor and overlapping exposure context', () => {
+    const html = renderToStaticMarkup(<IdeasPage workspace={workspace({ archivedIdeas: [] })} onBuildIdea={() => undefined} onSaved={() => undefined} />);
+    expect(html).toContain('Edit Idea');
+    expect(html).toContain('Idea Editor');
+    expect(html).toContain('Exposure Clusters');
+    expect(html).toContain('totals intentionally overlap');
   });
 
   it('disables permanent deletion when archived research has journal history', () => {
@@ -79,5 +89,17 @@ describe('idea archive presentation', () => {
     expect(deleteConfirmationFor('SPY')).toBe('DELETE SPY');
     expect(canConfirmIdeaDelete('SPY', 'DELETE SPY')).toBe(true);
     expect(canConfirmIdeaDelete('SPY', 'delete spy')).toBe(false);
+  });
+
+  it('prepopulates the shared four-step editor for an existing Idea', () => {
+    const idea = demoWorkspace.ideas[0];
+    const html = renderToStaticMarkup(<Workflow open ownerId={demoWorkspace.profile!.id} idea={idea} catalysts={demoWorkspace.catalysts} onClose={() => undefined} />);
+    expect(html).toContain(`Edit ${idea.ticker}`);
+    expect(html).toContain('Setup');
+    expect(html).toContain('Catalyst');
+    expect(html).toContain('Research');
+    expect(html).toContain('Candidate');
+    expect(html).not.toContain('Balanced');
+    expect(html).not.toContain('Aggressive');
   });
 });
