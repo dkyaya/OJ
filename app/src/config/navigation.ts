@@ -2,6 +2,7 @@ import { BarChart3, CalendarDays, LayoutDashboard, Lightbulb, NotebookPen, Trend
 
 export type PrimaryPath = '/' | '/catalysts' | '/ideas' | '/trades' | '/journal' | '/insights';
 export type AppPath = PrimaryPath | '/workspace' | '/settings';
+export type RouteMotionDirection = 'forward' | 'backward' | 'neutral';
 
 export type NavItem = {
   path: PrimaryPath;
@@ -37,6 +38,20 @@ export function normalizePath(hash = window.location.hash): { path: AppPath; leg
 
 export function navigate(path: AppPath) {
   window.location.hash = path;
+}
+
+export function routeMotionDirection(previous: AppPath, next: AppPath): RouteMotionDirection {
+  const previousIndex = primaryNavigation.findIndex((item) => item.path === previous);
+  const nextIndex = primaryNavigation.findIndex((item) => item.path === next);
+  if (previousIndex < 0 || nextIndex < 0 || previousIndex === nextIndex) return 'neutral';
+  return nextIndex > previousIndex ? 'forward' : 'backward';
+}
+
+export function swipeNavigationTarget(current: AppPath, distance: number, threshold = 48): PrimaryPath | undefined {
+  if (Math.abs(distance) < threshold) return undefined;
+  const currentIndex = primaryNavigation.findIndex((item) => item.path === current);
+  if (currentIndex < 0) return undefined;
+  return primaryNavigation[currentIndex + (distance < 0 ? 1 : -1)]?.path;
 }
 
 export function catalystIdFromHash(hash = typeof window === 'undefined' ? '' : window.location.hash) {
