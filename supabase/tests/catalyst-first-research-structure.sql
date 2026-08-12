@@ -53,9 +53,44 @@ begin
     select 1 from pg_indexes where schemaname = 'public' and tablename = 'trade_ideas'
       and indexname = 'trade_ideas_exposure_tags_idx'
   ) then raise exception 'Idea exposure GIN index missing'; end if;
+
+  if position(
+    'current_user in (''service_role'', ''postgres'', ''supabase_admin'')'
+    in pg_get_functiondef('private.guard_catalyst_scope()'::regprocedure)
+  ) = 0 then
+    raise exception 'catalyst scope guard blocks trusted migration maintenance';
+  end if;
 end
 $test$;
 
+-- The migration runner connects as postgres without an end-user JWT. Exercise
+-- that exact maintenance path so catalyst backfills cannot regress into an
+-- approved-authentication failure.
+insert into auth.users(id,email,email_confirmed_at,encrypted_password)
+values (
+  '60aaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa0',
+  'catalyst-maintenance@example.invalid',
+  now(),
+  encode(gen_random_bytes(32),'hex')
+);
+insert into public.catalysts(
+  id,user_id,event,event_type,event_at,created_by,updated_by,visibility,data
+)
+values (
+  '60bbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb0',
+  '60aaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa0',
+  'Synthetic migration maintenance catalyst',
+  'Other',
+  now() + interval '1 day',
+  '60aaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa0',
+  '60aaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa0',
+  'private',
+  '{}'
+);
+update public.catalysts
+set scheduled_date = (event_at at time zone timezone_name)::date,
+    scheduled_time = (event_at at time zone timezone_name)::time
+where id = '60bbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb0';
+
 select 'passed' as catalyst_first_research_structure;
 rollback;
-

@@ -4,6 +4,49 @@
 
 begin;
 
+-- Phase 5 originally treated every catalyst write as an authenticated browser
+-- write. Trusted database maintenance runs without an end-user JWT, so that
+-- guard also blocked this migration's catalyst backfills. Preserve all browser
+-- and workspace checks while allowing the same privileged database roles used
+-- by OJ's other ownership and browser-state guards to perform maintenance.
+create or replace function private.guard_catalyst_scope()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('service_role', 'postgres', 'supabase_admin') then
+    return new;
+  end if;
+  if (select auth.uid()) is null or not (select private.is_approved_user()) then
+    raise exception 'approved authentication required';
+  end if;
+  if tg_op = 'INSERT' then
+    if new.user_id <> (select auth.uid()) or new.created_by <> (select auth.uid()) or new.updated_by <> (select auth.uid()) then
+      raise exception 'catalyst authorship must match the current user';
+    end if;
+  else
+    if new.user_id is distinct from old.user_id
+      or new.created_by is distinct from old.created_by
+      or new.workspace_id is distinct from old.workspace_id
+    then
+      raise exception 'catalyst ownership and workspace scope are immutable';
+    end if;
+    if new.updated_by <> (select auth.uid()) then raise exception 'catalyst updater must match the current user'; end if;
+  end if;
+  if new.visibility = 'workspace' then
+    if new.workspace_id is null or not (select private.is_workspace_member(new.workspace_id)) then
+      raise exception 'active workspace membership required';
+    end if;
+  elsif new.user_id <> (select auth.uid()) then
+    raise exception 'private catalysts belong to their creator';
+  end if;
+  return new;
+end
+$$;
+
+revoke all on function private.guard_catalyst_scope() from public, anon, authenticated;
+
 alter table public.catalysts
   add column schedule_kind text not null default 'scheduled'
     check (schedule_kind in ('scheduled', 'contextual')),
