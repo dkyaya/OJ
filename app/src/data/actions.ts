@@ -1,6 +1,12 @@
 import { supabase } from '../lib/supabase';
 import { clearDraft, removeOperation } from '../storage/drafts';
 import type { AccountPolicy } from '../types/domain';
+import type { CatalystDateCertainty, CatalystScheduleKind, SnapshotType, SourceQuality } from '../types/domain';
+import { zonedEventIso } from '../lib/date-time';
+
+const httpUrl = (value: string) => {
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
+};
 
 async function approvedUser() {
   if (!supabase) throw new Error('Cloud is not configured.');
@@ -90,11 +96,25 @@ export async function saveJournalReview(input: { ideaId: string; summary: string
   if (error) throw error; return data;
 }
 
-export async function saveCatalystRecord(input: { workspaceId: string; event: string; type: string; date: string; time?: string; sensitivity?: string; source?: string; cluster?: string }) {
+export async function saveCatalystRecord(input: {
+  workspaceId: string; event: string; type: string; date?: string; time?: string; timezoneName: string;
+  scheduleKind: CatalystScheduleKind; dateCertainty: CatalystDateCertainty; marketSession: 'pre_market' | 'regular' | 'after_hours' | 'all_day' | 'unscheduled';
+  sensitivity?: string; source?: string; sourceUrl?: string; sourceQuality: SourceQuality; cluster?: string;
+  consensus?: string; prior?: string; whyMatters?: string; keyVariables?: string; tags?: string;
+}) {
   const user = await approvedUser();
   if (!input.workspaceId) throw new Error('A research workspace is required.');
-  if (!input.event.trim() || !input.date) throw new Error('Add an event and date.');
-  const { data, error } = await supabase!.from('catalysts').insert({
+  if (!input.event.trim()) throw new Error('Add an event.');
+  if (input.scheduleKind === 'scheduled' && !input.date) throw new Error('Add a scheduled date.');
+  if (input.sourceUrl?.trim() && !httpUrl(input.sourceUrl.trim())) throw new Error('Use an http or https source URL.');
+  const scheduled = input.scheduleKind === 'scheduled';
+  const richData = {
+    sensitivity: input.sensitivity || 'TBD', schedule_kind: input.scheduleKind, scheduled_date: scheduled ? input.date : null, scheduled_time: scheduled ? input.time || '08:30' : null,
+    timezone_name: input.timezoneName, market_session: scheduled ? input.marketSession : 'unscheduled', date_certainty: scheduled ? input.dateCertainty : 'contextual', source_url: input.sourceUrl?.trim() || null,
+    source_quality: input.sourceQuality, consensus_value: input.consensus?.trim() || null, prior_value: input.prior?.trim() || null, why_matters: input.whyMatters?.trim() || null,
+    key_variables: input.keyVariables?.split(/\n|,/).map((item) => item.trim()).filter(Boolean) || [], tags: input.tags?.split(/\n|,/).map((item) => item.trim().toLowerCase()).filter(Boolean) || [],
+  };
+  const base = {
     user_id: user.id,
     workspace_id: input.workspaceId,
     created_by: user.id,
@@ -102,17 +122,71 @@ export async function saveCatalystRecord(input: { workspaceId: string; event: st
     visibility: 'workspace',
     event: input.event.trim(),
     event_type: input.type || 'Other',
-    event_at: new Date(`${input.date}T${input.time || '08:30'}:00`).toISOString(),
+    event_at: scheduled ? zonedEventIso(input.date!, input.time || '08:30', input.timezoneName) : null,
+    schedule_kind: input.scheduleKind,
+    scheduled_date: scheduled ? input.date : null,
+    scheduled_time: scheduled ? input.time || '08:30' : null,
+    timezone_name: input.timezoneName,
+    market_session: scheduled ? input.marketSession : 'unscheduled',
+    date_certainty: scheduled ? input.dateCertainty : 'contextual',
+    event_status: scheduled ? 'scheduled' : 'contextual',
     expected_sensitivity: input.sensitivity || null,
     release_source: input.source?.trim() || null,
+    source_url: input.sourceUrl?.trim() || null,
+    source_quality: input.sourceQuality,
+    last_verified_at: input.sourceQuality === 'unverified' ? null : new Date().toISOString(),
     catalyst_cluster_id: input.cluster?.trim() || null,
+    consensus_value: input.consensus?.trim() || null,
+    prior_value: input.prior?.trim() || null,
+    why_matters: input.whyMatters?.trim() || null,
+    key_variables: input.keyVariables?.split(/\n|,/).map((item) => item.trim()).filter(Boolean) || [],
+    tags: input.tags?.split(/\n|,/).map((item) => item.trim().toLowerCase()).filter(Boolean) || [],
     research_status: 'researching',
     opportunity_scores: {},
-    data: { sensitivity: input.sensitivity || 'TBD' },
+    data: richData,
     revision: 1,
     sync_status: 'cloud_draft',
     source: 'oj_app',
     mirror_status: 'not_requested',
+  };
+  let result = await supabase!.from('catalysts').insert(base).select().single();
+  if (result.error && /schedule_kind|scheduled_date|scheduled_time|timezone_name|market_session|date_certainty|event_status|source_url|source_quality|last_verified_at|consensus_value|prior_value|why_matters|key_variables|tags|schema cache/i.test(result.error.message)) {
+    const legacy = { ...base } as Record<string, unknown>;
+    for (const key of ['schedule_kind','scheduled_date','scheduled_time','timezone_name','market_session','date_certainty','event_status','source_url','source_quality','last_verified_at','consensus_value','prior_value','why_matters','key_variables','tags']) delete legacy[key];
+    result = await supabase!.from('catalysts').insert(legacy).select().single();
+  }
+  if (result.error) throw result.error; return result.data;
+}
+
+export async function saveResearchSource(input: {
+  catalystId?: string; tradeIdeaId?: string; title: string; publisher?: string; url: string;
+  sourceQuality: SourceQuality; claimSummary?: string; publishedAt?: string; verified: boolean;
+}) {
+  const user = await approvedUser();
+  if (!input.catalystId && !input.tradeIdeaId) throw new Error('Choose a catalyst or Idea for this source.');
+  if (!input.title.trim() || !input.url.trim()) throw new Error('Add a source title and URL.');
+  if (!httpUrl(input.url.trim())) throw new Error('Use an http or https source URL.');
+  const { data, error } = await supabase!.from('research_sources').insert({
+    user_id: user.id, catalyst_id: input.catalystId || null, trade_idea_id: input.tradeIdeaId || null,
+    title: input.title.trim(), publisher: input.publisher?.trim() || null, url: input.url.trim(), source_quality: input.sourceQuality,
+    claim_summary: input.claimSummary?.trim() || null, published_at: input.publishedAt ? new Date(input.publishedAt).toISOString() : null,
+    accessed_at: new Date().toISOString(), verified_at: input.verified ? new Date().toISOString() : null,
   }).select().single();
-  if (error) throw error; return data;
+  if (error) throw new Error(/research_sources|schema cache|could not find the table/i.test(error.message) ? 'OJ is finishing its catalyst-research database update. Try again after the Supabase workflow completes.' : error.message); return data;
+}
+
+export async function saveResearchSnapshot(input: {
+  catalystId?: string; tradeIdeaId?: string; snapshotType: SnapshotType; ticker?: string; observedAt: string;
+  methodology: string; values: Record<string, string>;
+}) {
+  const user = await approvedUser();
+  if (!input.catalystId && !input.tradeIdeaId) throw new Error('Choose a catalyst or Idea for this snapshot.');
+  if (!input.methodology.trim() || !input.observedAt) throw new Error('Record the observation time and methodology.');
+  const values = Object.fromEntries(Object.entries(input.values).map(([key, value]) => [key, value.trim()]).filter(([, value]) => value));
+  const { data, error } = await supabase!.from('research_snapshots').insert({
+    user_id: user.id, catalyst_id: input.catalystId || null, trade_idea_id: input.tradeIdeaId || null,
+    snapshot_type: input.snapshotType, ticker: input.ticker?.trim().toUpperCase() || null,
+    observed_at: new Date(input.observedAt).toISOString(), methodology: input.methodology.trim(), values,
+  }).select().single();
+  if (error) throw new Error(/research_snapshots|schema cache|could not find the table/i.test(error.message) ? 'OJ is finishing its catalyst-research database update. Try again after the Supabase workflow completes.' : error.message); return data;
 }

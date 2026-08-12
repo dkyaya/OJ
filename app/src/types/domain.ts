@@ -1,8 +1,15 @@
 export type IdeaStatus = 'draft' | 'watchlist' | 'ready' | 'deferred' | 'rejected' | 'invalidated';
+export type ResearchStage = 'watching' | 'researching' | 'thesis_forming' | 'entry_candidate' | 'entered' | 'exited' | 'reviewed' | 'parked' | 'rejected' | 'no_trade';
+export type CatalystScheduleKind = 'scheduled' | 'contextual';
+export type CatalystDateCertainty = 'confirmed' | 'estimated' | 'unconfirmed' | 'contextual';
+export type CatalystEventStatus = 'scheduled' | 'released' | 'revised' | 'cancelled' | 'contextual';
+export type SourceQuality = 'official' | 'primary' | 'secondary' | 'unverified';
+export type SnapshotType = 'market_pricing' | 'event_implied_move' | 'expiration_implied_move' | 'entry_window' | 'event_reaction' | 'realized_event_move' | 'macro_context';
 
 export type Candidate = {
   id: string;
   name: string;
+  legacyName?: string;
   longStrike?: number;
   shortStrike?: number;
   debit?: number;
@@ -16,16 +23,27 @@ export type Candidate = {
 export type TradeIdea = {
   id: string;
   ticker: string;
+  assetType?: string;
   strategy: string;
   bias: string;
   status: IdeaStatus;
   confidence?: string;
   thesis?: string;
+  evidence?: string;
   entryConditions?: string;
   invalidation?: string;
   plannedExit?: string;
+  holdThroughEvents: string[];
+  avoidEvents: string[];
   catalystId?: string;
   catalystCluster?: string;
+  researchStage: ResearchStage;
+  nextDecisionAt?: string;
+  earliestEntryAt?: string;
+  latestEntryAt?: string;
+  exposureTags: string[];
+  riskOvershootAcknowledged: boolean;
+  riskOvershootNote?: string;
   risk?: number;
   archivedAt?: string;
   updatedAt: string;
@@ -38,11 +56,33 @@ export type Catalyst = {
   id: string;
   event: string;
   type: string;
+  category?: string;
   date?: string;
   eventAt?: string;
+  scheduleKind: CatalystScheduleKind;
+  scheduledTime?: string;
+  timezoneName: string;
+  marketSession: 'pre_market' | 'regular' | 'after_hours' | 'all_day' | 'unscheduled';
+  dateCertainty: CatalystDateCertainty;
+  eventStatus: CatalystEventStatus;
   sensitivity?: string;
   status: string;
   source?: string;
+  sourceUrl?: string;
+  sourceQuality: SourceQuality;
+  lastVerifiedAt?: string;
+  consensus?: string;
+  prior?: string;
+  actual?: string;
+  surprise?: string;
+  whyMatters?: string;
+  keyVariables: string[];
+  transmissionPath?: string;
+  crossAssetReaction?: string;
+  ratesReaction?: string;
+  sectorReaction?: string;
+  postEventInterpretation?: string;
+  tags: string[];
   cluster?: string;
   linkedTickers: string[];
   revision: number;
@@ -52,6 +92,39 @@ export type Catalyst = {
   createdBy?: string;
   updatedBy?: string;
   visibility: 'private' | 'workspace';
+};
+
+export type TradeIdeaCatalystLink = {
+  id: string;
+  tradeIdeaId: string;
+  catalystId: string;
+  relationship: 'primary' | 'supporting' | 'avoid' | 'exit' | 'context';
+};
+
+export type ResearchSource = {
+  id: string;
+  catalystId?: string;
+  tradeIdeaId?: string;
+  title: string;
+  publisher?: string;
+  url: string;
+  sourceQuality: SourceQuality;
+  claimSummary?: string;
+  publishedAt?: string;
+  accessedAt: string;
+  verifiedAt?: string;
+};
+
+export type ResearchSnapshot = {
+  id: string;
+  catalystId?: string;
+  tradeIdeaId?: string;
+  sourceId?: string;
+  snapshotType: SnapshotType;
+  ticker?: string;
+  observedAt: string;
+  methodology: string;
+  values: Record<string, unknown>;
 };
 
 export type ResearchWorkspace = { id: string; name: string; createdBy: string; updatedAt: string };
@@ -138,6 +211,9 @@ export type Workspace = {
   ideas: TradeIdea[];
   archivedIdeas: TradeIdea[];
   catalysts: Catalyst[];
+  ideaCatalystLinks: TradeIdeaCatalystLink[];
+  researchSources: ResearchSource[];
+  researchSnapshots: ResearchSnapshot[];
   positions: Position[];
   journal: JournalRecord[];
   opportunities: Opportunity[];
