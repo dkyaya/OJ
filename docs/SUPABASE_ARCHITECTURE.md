@@ -25,4 +25,14 @@ Migration filenames in Git use the exact timestamp versions recorded in `supabas
 
 The public schema is explicitly exposed only where the browser needs it. Authenticated clients may read and update approved owner records, but cannot directly delete tables, mutate trusted workflow state, or directly create confirmed positions. Permanent idea deletion is mediated by an archive-first, exact-confirmation command and private processor. Composite foreign keys bind every trade child to the same `(trade_idea_id,user_id)` owner. Server-only payloads and sync events have no browser grants or policies.
 
+The Idea editor writes the dedicated `trade_ideas.idea_status` field while retaining the compatible `data.Status` value used by existing trade-entry guards and exports. The canonical six-value status vocabulary is documented in `IDEA_WORKFLOW.md`; `deleted_at` remains the independent archive lifecycle.
+
+`catalysts.catalyst_category` holds the refined category taxonomy. `event_type` is retained as legacy provenance, and ambiguous legacy values are not guessed during backfill.
+
 Supabase is the application authority. Commit SHA and note path fields are optional provenance for a private Markdown mirror. Ordinary saves update Supabase directly and never trigger a public Pages build.
+
+## Catalyst-first extension
+
+`20260812025054_catalyst_first_research_foundation.sql` extends the existing Catalyst and Idea tables and adds three owner-scoped tables: `trade_idea_catalysts`, `research_sources`, and append-only `research_snapshots`. It does not duplicate the Calendar, War Room, evidence, mission, forecast, candidate, or Trade systems. See `CATALYST_FIRST_RESEARCH.md` and `RESEARCH_METHODS.md` for product semantics and calculation conventions.
+
+The structural and rolled-back synthetic two-user checks are `supabase/tests/catalyst-first-research-structure.sql` and `supabase/tests/catalyst-first-research-two-user-rls.sql`. Run them through a trusted SQL test session after the migration. The public frontend deliberately treats only missing new ledger tables as a pending-migration condition; other Supabase errors still fail closed.

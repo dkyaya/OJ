@@ -5,12 +5,28 @@ const value = (input: unknown) => input === undefined || input === null || input
 const yaml = (input: unknown) => JSON.stringify(value(input));
 const safeName = (input: string) => input.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-|-$/g, '') || 'record';
 
-export function tradeMarkdown(idea: TradeIdea, position?: Position) {
+function legacyTradeMarkdown(idea: TradeIdea, position?: Position) {
   return `---\nrecord_type: trade_idea\nid: ${yaml(idea.id)}\nticker: ${yaml(idea.ticker)}\nstrategy: ${yaml(idea.strategy)}\nstatus: ${yaml(idea.status)}\nrevision: ${idea.revision}\nexported_from: OJ\n---\n\n# ${idea.ticker} ${idea.strategy}\n\n## Thesis\n\n${value(idea.thesis)}\n\n## Candidates\n\n${idea.candidates.length ? idea.candidates.map((candidate) => `### ${candidate.name}\n\n- Long strike: ${value(candidate.longStrike)}\n- Short strike: ${value(candidate.shortStrike)}\n- Debit: ${value(candidate.debit)}\n- Contracts: ${value(candidate.contracts)}\n- Maximum loss: ${value(candidate.maxLoss)}\n- Maximum profit: ${value(candidate.maxProfit)}\n- Break-even: ${value(candidate.breakEven)}`).join('\n\n') : 'TBD'}\n\n## Entry\n\n${position ? `Confirmed position opened ${position.openedAt}; ${position.contracts} contract(s).` : 'Not entered.'}\n\n## Entry Conditions\n\n${value(idea.entryConditions)}\n\n## Invalidation\n\n${value(idea.invalidation)}\n\n## Planned Exit\n\n${value(idea.plannedExit)}\n\n## Catalyst\n\n${value(idea.catalystId)}\n`;
 }
 
+export function tradeMarkdown(idea: TradeIdea, position?: Position) {
+  const base = legacyTradeMarkdown(idea, position).replace(
+    `status: ${yaml(idea.status)}\nrevision:`,
+    `status: ${yaml(idea.status)}\nresearch_stage: ${yaml(idea.researchStage)}\nexposure_tags: ${JSON.stringify(idea.exposureTags)}\nrevision:`,
+  );
+  return `${base}\n## Decision Timing\n\n- Next decision: ${value(idea.nextDecisionAt)}\n- Earliest entry: ${value(idea.earliestEntryAt)}\n- Latest entry: ${value(idea.latestEntryAt)}\n\n## Exposure Tags\n\n${idea.exposureTags.length ? idea.exposureTags.map((item) => `- ${item}`).join('\n') : 'TBD'}\n\n## Risk Exception\n\n${idea.riskOvershootAcknowledged ? value(idea.riskOvershootNote) : 'None. OJ did not auto-size or route an order.'}\n`;
+}
+
+function legacyCatalystMarkdown(catalyst: Catalyst) {
+  return `---\nrecord_type: catalyst\nid: ${yaml(catalyst.id)}\ncategory: ${yaml(catalyst.category)}\nlegacy_event_type: ${yaml(catalyst.type)}\nevent_at: ${yaml(catalyst.date)}\nstatus: ${yaml(catalyst.status)}\nrevision: ${catalyst.revision}\nexported_from: OJ\n---\n\n# ${catalyst.event}\n\n## Schedule\n\n- Date: ${value(catalyst.date)}\n- Category: ${value(catalyst.category || catalyst.type)}\n- Sensitivity: ${value(catalyst.sensitivity)}\n- Source: ${value(catalyst.source)}\n- Cluster: ${value(catalyst.cluster)}\n\n## Linked Securities\n\n${catalyst.linkedTickers.length ? catalyst.linkedTickers.map((ticker) => `- ${ticker}`).join('\n') : 'TBD'}\n`;
+}
+
 export function catalystMarkdown(catalyst: Catalyst) {
-  return `---\nrecord_type: catalyst\nid: ${yaml(catalyst.id)}\nevent_type: ${yaml(catalyst.type)}\nevent_at: ${yaml(catalyst.date)}\nstatus: ${yaml(catalyst.status)}\nrevision: ${catalyst.revision}\nexported_from: OJ\n---\n\n# ${catalyst.event}\n\n## Schedule\n\n- Date: ${value(catalyst.date)}\n- Sensitivity: ${value(catalyst.sensitivity)}\n- Source: ${value(catalyst.source)}\n- Cluster: ${value(catalyst.cluster)}\n\n## Linked Securities\n\n${catalyst.linkedTickers.length ? catalyst.linkedTickers.map((ticker) => `- ${ticker}`).join('\n') : 'TBD'}\n`;
+  const base = legacyCatalystMarkdown(catalyst).replace(
+    `category: ${yaml(catalyst.category)}\nlegacy_event_type: ${yaml(catalyst.type)}\nevent_at: ${yaml(catalyst.date)}\nstatus:`,
+    `category: ${yaml(catalyst.category)}\nlegacy_event_type: ${yaml(catalyst.type)}\nschedule_kind: ${yaml(catalyst.scheduleKind)}\nevent_at: ${yaml(catalyst.eventAt)}\ndate_certainty: ${yaml(catalyst.dateCertainty)}\nevent_status: ${yaml(catalyst.eventStatus)}\ntags: ${JSON.stringify(catalyst.tags)}\nstatus:`,
+  );
+  return `${base}\n## Verified Schedule\n\n- Local time: ${value(catalyst.scheduledTime)}\n- Timezone: ${value(catalyst.timezoneName)}\n- Market session: ${value(catalyst.marketSession)}\n- Date certainty: ${value(catalyst.dateCertainty)}\n\n## Expectations\n\n- Consensus: ${value(catalyst.consensus)}\n- Prior: ${value(catalyst.prior)}\n- Actual: ${value(catalyst.actual)}\n- Surprise: ${value(catalyst.surprise)}\n\n## Why It Matters\n\n${value(catalyst.whyMatters)}\n\n### Key Variables\n\n${catalyst.keyVariables.length ? catalyst.keyVariables.map((item) => `- ${item}`).join('\n') : 'TBD'}\n\n## Market Response\n\n- Cross-asset: ${value(catalyst.crossAssetReaction)}\n- Rates: ${value(catalyst.ratesReaction)}\n- Sectors: ${value(catalyst.sectorReaction)}\n- Interpretation: ${value(catalyst.postEventInterpretation)}\n\n## Verification\n\n- Source URL: ${value(catalyst.sourceUrl)}\n- Quality: ${value(catalyst.sourceQuality)}\n- Last verified: ${value(catalyst.lastVerifiedAt)}\n`;
 }
 
 function positionMarkdown(position: Position, idea?: TradeIdea) {
@@ -40,6 +56,9 @@ export function journalExportFiles(workspace: Workspace) {
   files['Journal/Journal Index.md'] = `# Journal\n\n${workspace.journal.length ? workspace.journal.map((item) => `- ${item.createdAt}: ${item.summary}`).join('\n') : 'No journal records.'}\n`;
   files['Research/Catalyst Index.md'] = `# Catalyst Research\n\n${workspace.catalysts.length ? workspace.catalysts.map((item) => `- ${item.date || 'TBD'} — ${item.event} (${item.linkedTickers.join(', ') || 'mapping TBD'})`).join('\n') : 'No catalyst research.'}\n`;
   files['Research/Account Policy.md'] = workspace.policy ? `# Account Policy\n\n- Effective: ${workspace.policy.effectiveDate}\n- Total capital: ${workspace.policy.totalCapital}\n- Maximum open options risk: ${workspace.policy.maximumOpenRisk}\n- Fixed per-trade limit: ${value(workspace.policy.fixedPerTradeLimit)}\n- Strategies: ${workspace.policy.strategies.join(', ') || 'TBD'}\n- Version: ${workspace.policy.version}\n` : '# Account Policy\n\nTBD\n';
+  files['Research/Idea Catalyst Links.md'] = `# Idea–Catalyst Links\n\n${workspace.ideaCatalystLinks.length ? workspace.ideaCatalystLinks.map((item) => `- Idea ${item.tradeIdeaId} → Catalyst ${item.catalystId} (${item.relationship})`).join('\n') : 'No additional Catalyst links.'}\n`;
+  files['Research/Sources.md'] = `# Personal Research Sources\n\n${workspace.researchSources.length ? workspace.researchSources.map((item) => `## ${item.title}\n\n- Publisher: ${value(item.publisher)}\n- URL: ${item.url}\n- Quality: ${item.sourceQuality}\n- Catalyst: ${value(item.catalystId)}\n- Idea: ${value(item.tradeIdeaId)}\n- Accessed: ${item.accessedAt}\n- Verified: ${value(item.verifiedAt)}\n\n${value(item.claimSummary)}`).join('\n\n') : 'No personal source records.'}\n`;
+  files['Research/Snapshots.md'] = `# Research Snapshots\n\n${workspace.researchSnapshots.length ? workspace.researchSnapshots.map((item) => `## ${item.snapshotType.replaceAll('_', ' ')} — ${item.observedAt}\n\n- Ticker: ${value(item.ticker)}\n- Catalyst: ${value(item.catalystId)}\n- Idea: ${value(item.tradeIdeaId)}\n- Methodology: ${item.methodology}\n- Values: ${JSON.stringify(item.values)}`).join('\n\n') : 'No research snapshots.'}\n`;
   return files;
 }
 
