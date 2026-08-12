@@ -3,6 +3,7 @@ import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst
 import { demoWorkspace } from './demo';
 import { emptyCollaboration, loadCollaboration } from './collaboration';
 import { persistedSessionUser } from '../lib/session';
+import { normalizeMobileNavigation } from '../config/navigation';
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -154,10 +155,11 @@ export async function loadWorkspace(): Promise<Workspace> {
     strategies: stringArray(policyRow.preferred_defined_risk_strategies), effectiveDate: String(policyRow.effective_date), version: Number(policyRow.policy_version || 1),
   } : undefined;
   const preferenceRow = preferencesResult.data as Record<string, unknown> | null;
+  const preferenceData = record(preferenceRow?.data);
   const preferences: AppPreferences | undefined = preferenceRow ? {
     theme: ['light','dark'].includes(String(preferenceRow.theme)) ? preferenceRow.theme as 'light' | 'dark' : 'system',
     calendarView: ['week','day'].includes(String(preferenceRow.calendar_view)) ? preferenceRow.calendar_view as 'week' | 'day' : 'month',
-    compactCards: Boolean(preferenceRow.compact_cards), revision: Number(preferenceRow.revision || 1),
+    compactCards: Boolean(preferenceRow.compact_cards), mobileNavigation: normalizeMobileNavigation(preferenceData.mobileNavigation), data: preferenceData, revision: Number(preferenceRow.revision || 1),
   } : undefined;
   return { authenticated: true, approved: true, demo: false, ideas, archivedIdeas, catalysts, ideaCatalystLinks, researchSources, researchSnapshots, positions, journal, opportunities, profile, policy, preferences, ...collaboration, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
 }
@@ -165,7 +167,7 @@ export async function loadWorkspace(): Promise<Workspace> {
 export async function savePreferences(input: Omit<AppPreferences, 'revision'>, currentRevision?: number) {
   if (!supabase) throw new Error('Cloud is not configured.');
   const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error('Sign in to save preferences.');
-  const row = { user_id: user.id, theme: input.theme, calendar_view: input.calendarView, compact_cards: input.compactCards, revision: currentRevision ? currentRevision + 1 : 1 };
+  const row = { user_id: user.id, theme: input.theme, calendar_view: input.calendarView, compact_cards: input.compactCards, data: { ...input.data, mobileNavigation: normalizeMobileNavigation(input.mobileNavigation) }, revision: currentRevision ? currentRevision + 1 : 1 };
   const query = currentRevision
     ? supabase.from('application_preferences').update(row).eq('user_id', user.id).eq('revision', currentRevision)
     : supabase.from('application_preferences').insert(row);

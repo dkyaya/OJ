@@ -12,7 +12,7 @@ export const demoWorkspace: Workspace = {
   ],
   pendingWorkspaceInvites: [],
   policy: { totalCapital: 5000, maximumOpenRisk: 500, strategies: ['bull-call-spread', 'bear-put-spread'], effectiveDate: '2026-08-01', version: 1 },
-  preferences: { theme: 'dark', calendarView: 'month', compactCards: false, revision: 1 },
+  preferences: { theme: 'dark', calendarView: 'month', compactCards: false, mobileNavigation: ['/', '/catalysts', '/ideas', '/trades'], data: {}, revision: 1 },
   ideas: [
     {
       id: '10000000-0000-4000-8000-000000000001', ticker: 'DEMO', strategy: 'Bear Put Spread', bias: 'Bearish', status: 'watchlist', confidence: 'Moderate',

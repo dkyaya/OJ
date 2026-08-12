@@ -20,6 +20,28 @@ export const primaryNavigation: NavItem[] = [
   { path: '/insights', label: 'Insights', subtitle: 'Patterns across your trading history.', icon: BarChart3 },
 ];
 
+export const defaultMobileNavigation: PrimaryPath[] = ['/', '/catalysts', '/ideas', '/trades'];
+
+export function normalizeMobileNavigation(value: unknown): PrimaryPath[] {
+  const validPaths = new Set(primaryNavigation.map((item) => item.path));
+  const selected = Array.isArray(value)
+    ? value.filter((path): path is PrimaryPath => typeof path === 'string' && validPaths.has(path as PrimaryPath))
+    : [];
+  const unique = [...new Set(selected)];
+  const filled = [...unique, ...defaultMobileNavigation, ...primaryNavigation.map((item) => item.path)]
+    .filter((path, index, paths) => paths.indexOf(path) === index);
+  return filled.slice(0, 4);
+}
+
+export function replaceMobileNavigationShortcut(value: unknown, index: number, path: PrimaryPath): PrimaryPath[] {
+  const shortcuts = normalizeMobileNavigation(value);
+  if (index < 0 || index >= shortcuts.length) return shortcuts;
+  const existingIndex = shortcuts.indexOf(path); const replacedPath = shortcuts[index];
+  if (existingIndex >= 0) shortcuts[existingIndex] = replacedPath;
+  shortcuts[index] = path;
+  return shortcuts;
+}
+
 export const legacyRoutes: Record<string, AppPath> = {
   '/trade-ideas': '/ideas',
   '/research': '/ideas',
@@ -47,13 +69,13 @@ export function routeMotionDirection(previous: AppPath, next: AppPath): RouteMot
   return nextIndex > previousIndex ? 'forward' : 'backward';
 }
 
-export function swipeNavigationTarget(current: AppPath, distance: number, slotWidth = 52, threshold = 24): PrimaryPath | undefined {
+export function swipeNavigationTarget(current: AppPath, distance: number, slotWidth = 52, threshold = 24, paths: readonly PrimaryPath[] = primaryNavigation.map((item) => item.path)): PrimaryPath | undefined {
   if (Math.abs(distance) < threshold) return undefined;
-  const currentIndex = primaryNavigation.findIndex((item) => item.path === current);
+  const currentIndex = paths.findIndex((path) => path === current);
   if (currentIndex < 0) return undefined;
   const steps = Math.max(1, Math.round(Math.abs(distance) / Math.max(slotWidth, 1)));
-  const targetIndex = Math.max(0, Math.min(primaryNavigation.length - 1, currentIndex + (distance > 0 ? steps : -steps)));
-  return targetIndex === currentIndex ? undefined : primaryNavigation[targetIndex].path;
+  const targetIndex = Math.max(0, Math.min(paths.length - 1, currentIndex + (distance > 0 ? steps : -steps)));
+  return targetIndex === currentIndex ? undefined : paths[targetIndex];
 }
 
 export function catalystIdFromHash(hash = typeof window === 'undefined' ? '' : window.location.hash) {
