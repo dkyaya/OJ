@@ -192,6 +192,8 @@ export type AppPreferences = {
   theme: 'system' | 'light' | 'dark';
   calendarView: 'month' | 'week' | 'day';
   compactCards: boolean;
+  mobileNavigation: Array<'/' | '/catalysts' | '/ideas' | '/trades' | '/journal' | '/insights'>;
+  data?: Record<string, unknown>;
   revision: number;
 };
 

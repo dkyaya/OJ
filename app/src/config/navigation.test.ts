@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { catalystHash, catalystIdFromHash, normalizePath, primaryNavigation, routeMotionDirection, swipeNavigationTarget } from './navigation';
+import { catalystHash, catalystIdFromHash, defaultMobileNavigation, normalizeMobileNavigation, normalizePath, primaryNavigation, replaceMobileNavigationShortcut, routeMotionDirection, swipeNavigationTarget } from './navigation';
 
 describe('primary navigation', () => {
   it('contains exactly the six product sections', () => expect(primaryNavigation.map((item) => item.label)).toEqual(['Overview','Catalysts','Ideas','Trades','Journal','Insights']));
@@ -10,6 +10,14 @@ describe('primary navigation', () => {
   it('keeps Workspace secondary but directly routable', () => {
     expect(primaryNavigation.map((item) => String(item.path))).not.toContain('/workspace');
     expect(normalizePath('#/workspace').path).toBe('/workspace');
+  });
+  it('defaults the mobile bar to four shortcuts and repairs invalid saved choices', () => {
+    expect(defaultMobileNavigation).toEqual(['/', '/catalysts', '/ideas', '/trades']);
+    expect(normalizeMobileNavigation(['/journal', '/insights', '/journal', '/unsafe'])).toEqual(['/journal', '/insights', '/', '/catalysts']);
+  });
+  it('lets a shortcut selector replace or reorder a slot without duplicates', () => {
+    expect(replaceMobileNavigationShortcut(defaultMobileNavigation, 3, '/journal')).toEqual(['/', '/catalysts', '/ideas', '/journal']);
+    expect(replaceMobileNavigationShortcut(defaultMobileNavigation, 0, '/ideas')).toEqual(['/ideas', '/catalysts', '/', '/trades']);
   });
   it('deep-links a War Room while keeping Catalysts as the active section', () => {
     const id = '20000000-0000-4000-8000-000000000001';
@@ -31,5 +39,7 @@ describe('primary navigation', () => {
     expect(swipeNavigationTarget('/', -72)).toBeUndefined();
     expect(swipeNavigationTarget('/insights', 72)).toBeUndefined();
     expect(swipeNavigationTarget('/workspace', 72)).toBeUndefined();
+    expect(swipeNavigationTarget('/catalysts', 72, 52, 24, defaultMobileNavigation)).toBe('/ideas');
+    expect(swipeNavigationTarget('/journal', 72, 52, 24, defaultMobileNavigation)).toBeUndefined();
   });
 });
