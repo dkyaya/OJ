@@ -4,7 +4,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { LoadingScreen } from './components/LoadingScreen';
 import { AppShell } from './components/layout/AppShell';
 import { Workflow } from './components/Workflow';
-import { normalizePath, type AppPath } from './config/navigation';
+import { normalizePath, routeMotionDirection, type AppPath, type RouteMotionDirection } from './config/navigation';
 import { loadWorkspace, emptyWorkspace } from './data/workspace';
 import { authModeFromUrl, type AuthMode } from './lib/auth';
 import { remainingSplashTime } from './lib/loading';
@@ -30,8 +30,9 @@ function clearAuthCallback() {
 
 export default function App() {
   const [route, setRoute] = useState<AppPath>(routeFromHash); const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+  const [routeMotion, setRouteMotion] = useState<RouteMotionDirection>('neutral');
   const [authMode, setAuthMode] = useState<AuthMode>(() => authModeFromUrl(location.href)); const [workflow, setWorkflow] = useState<'ticker' | 'catalyst' | null>(null); const [dark, setDark] = useState(() => localStorage.getItem('oj-theme') !== 'light');
-  const splashStartedAt = useRef(performance.now()); const splashCompletionScheduled = useRef(false); const authModeRef = useRef(authMode); const refreshRequest = useRef(0);
+  const splashStartedAt = useRef(performance.now()); const splashCompletionScheduled = useRef(false); const authModeRef = useRef(authMode); const refreshRequest = useRef(0); const routeRef = useRef(route);
   const finishInitialLoad = useCallback(() => {
     if (splashCompletionScheduled.current) return;
     splashCompletionScheduled.current = true;
@@ -50,7 +51,7 @@ export default function App() {
   }, [finishInitialLoad]);
   const finishAuth = useCallback(() => { clearAuthCallback(); setAuthMode('sign-in'); void refresh(); }, [refresh]);
 
-  useEffect(() => { const hash = () => setRoute(routeFromHash()); window.addEventListener('hashchange', hash); return () => window.removeEventListener('hashchange', hash); }, []);
+  useEffect(() => { const hash = () => { const next = routeFromHash(); setRouteMotion(routeMotionDirection(routeRef.current, next)); routeRef.current = next; setRoute(next); }; window.addEventListener('hashchange', hash); return () => window.removeEventListener('hashchange', hash); }, []);
   useEffect(() => { authModeRef.current = authMode; }, [authMode]);
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; localStorage.setItem('oj-theme', dark ? 'dark' : 'light'); }, [dark]);
   useEffect(() => {
@@ -90,5 +91,5 @@ export default function App() {
               : route === '/workspace' ? <WorkspacePage workspace={workspace} />
                 : <SettingsPage workspace={workspace} onSaved={refresh} />;
   const profile = workspace.profile;
-  return <><AppShell current={route} dark={dark} userId={profile?.id} email={profile?.email} onRefresh={refresh} onTheme={() => setDark(!dark)} onBuildIdea={() => profile && setWorkflow('ticker')}>{error && <div className="app-error" role="alert">{error}</div>}{workspace.demo && <div className="demo-banner">Synthetic preview data</div>}{page}</AppShell>{profile && <Workflow open={workflow !== null} onClose={() => setWorkflow(null)} ownerId={profile.id} initialMode={workflow || 'ticker'} catalysts={workspace.catalysts.map((item) => ({ id: item.id, event: item.event, date: item.date }))} maximumRisk={workspace.policy?.maximumOpenRisk} openRisk={openRisk} />}</>;
+  return <><AppShell current={route} dark={dark} userId={profile?.id} email={profile?.email} onRefresh={refresh} onTheme={() => setDark(!dark)} onBuildIdea={() => profile && setWorkflow('ticker')}><div className="route-stage" data-motion={routeMotion} key={route}>{error && <div className="app-error" role="alert">{error}</div>}{workspace.demo && <div className="demo-banner">Synthetic preview data</div>}{page}</div></AppShell>{profile && <Workflow open={workflow !== null} onClose={() => setWorkflow(null)} ownerId={profile.id} initialMode={workflow || 'ticker'} catalysts={workspace.catalysts.map((item) => ({ id: item.id, event: item.event, date: item.date }))} maximumRisk={workspace.policy?.maximumOpenRisk} openRisk={openRisk} />}</>;
 }

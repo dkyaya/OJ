@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { catalystHash, catalystIdFromHash, normalizePath, primaryNavigation } from './navigation';
+import { catalystHash, catalystIdFromHash, normalizePath, primaryNavigation, routeMotionDirection, swipeNavigationTarget } from './navigation';
 
 describe('primary navigation', () => {
   it('contains exactly the six product sections', () => expect(primaryNavigation.map((item) => item.label)).toEqual(['Overview','Catalysts','Ideas','Trades','Journal','Insights']));
@@ -18,4 +18,17 @@ describe('primary navigation', () => {
     expect(normalizePath(catalystHash(id)).path).toBe('/catalysts');
   });
   it('rejects unsafe catalyst query values', () => expect(catalystIdFromHash('#/catalysts?catalyst=%3Cscript%3E')).toBe(''));
+  it('describes primary screen motion from the navigation order', () => {
+    expect(routeMotionDirection('/', '/ideas')).toBe('forward');
+    expect(routeMotionDirection('/journal', '/trades')).toBe('backward');
+    expect(routeMotionDirection('/settings', '/')).toBe('neutral');
+  });
+  it('moves one primary section per intentional navbar swipe', () => {
+    expect(swipeNavigationTarget('/ideas', -72)).toBe('/trades');
+    expect(swipeNavigationTarget('/ideas', 72)).toBe('/catalysts');
+    expect(swipeNavigationTarget('/ideas', -20)).toBeUndefined();
+    expect(swipeNavigationTarget('/', 72)).toBeUndefined();
+    expect(swipeNavigationTarget('/insights', -72)).toBeUndefined();
+    expect(swipeNavigationTarget('/workspace', -72)).toBeUndefined();
+  });
 });

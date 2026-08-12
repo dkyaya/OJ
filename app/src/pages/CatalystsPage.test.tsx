@@ -22,6 +22,16 @@ describe('calendar date keys', () => {
     expect(isPastCalendarEvent('2026-08-11T15:01:00Z', '2026-08-11', now)).toBe(false);
   });
 
+  it('highlights today in month and agenda views', () => {
+    const today = new Date(2026, 7, 11, 12);
+    const month = renderToStaticMarkup(<MonthCalendar focus={today} today={today} catalysts={[]} onOpen={() => undefined} />);
+    const agenda = renderToStaticMarkup(<Agenda focus={today} today={today} catalysts={[]} view="day" onOpen={() => undefined} />);
+
+    expect(month).toContain('class="today"><time dateTime="2026-08-11" aria-current="date"');
+    expect(agenda).toContain('<section class="today">');
+    expect(agenda).toContain('aria-current="date"');
+  });
+
   it('marks past month and agenda events without disabling their buttons', () => {
     const pastCatalyst = { ...demoWorkspace.catalysts[0], date: '2026-08-10', event: 'Past release' };
     const today = new Date(2026, 7, 11, 12);
