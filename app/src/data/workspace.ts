@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, IdeaStatus, JournalRecord, Opportunity, Position, TradeIdea, Workspace } from '../types/domain';
 import { demoWorkspace } from './demo';
 import { emptyCollaboration, loadCollaboration } from './collaboration';
+import { persistedSessionUser } from '../lib/session';
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -45,7 +46,7 @@ export function activeIdeaOpportunities(items: Opportunity[], archivedIdeaIds: R
 export async function loadWorkspace(): Promise<Workspace> {
   if (new URLSearchParams(location.search).get('demo') === '1') return { ...demoWorkspace, lastLoadedAt: new Date().toISOString() };
   if (!supabase) return emptyWorkspace();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await persistedSessionUser(supabase.auth);
   if (!user) return emptyWorkspace();
   const profileResult = await supabase.from('profiles').select('id,email,approved,display_name,initials,account_role,account_status').eq('id', user.id).maybeSingle();
   if (profileResult.error) throw new Error(profileResult.error.message);

@@ -31,7 +31,7 @@ function clearAuthCallback() {
 export default function App() {
   const [route, setRoute] = useState<AppPath>(routeFromHash); const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [authMode, setAuthMode] = useState<AuthMode>(() => authModeFromUrl(location.href)); const [workflow, setWorkflow] = useState<'ticker' | 'catalyst' | null>(null); const [dark, setDark] = useState(() => localStorage.getItem('oj-theme') !== 'light');
-  const splashStartedAt = useRef(performance.now()); const splashCompletionScheduled = useRef(false); const authModeRef = useRef(authMode);
+  const splashStartedAt = useRef(performance.now()); const splashCompletionScheduled = useRef(false); const authModeRef = useRef(authMode); const refreshRequest = useRef(0);
   const finishInitialLoad = useCallback(() => {
     if (splashCompletionScheduled.current) return;
     splashCompletionScheduled.current = true;
@@ -39,11 +39,14 @@ export default function App() {
     window.setTimeout(() => setLoading(false), remainingSplashTime(splashStartedAt.current, performance.now(), minimum));
   }, []);
   const refresh = useCallback(async () => {
+    const request = ++refreshRequest.current;
     try {
-      const next = await loadWorkspace(); setWorkspace(next); setError('');
+      const next = await loadWorkspace();
+      if (request !== refreshRequest.current) return;
+      setWorkspace(next); setError('');
       if (next.preferences?.theme === 'dark') setDark(true); if (next.preferences?.theme === 'light') setDark(false);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'OJ could not load.'); }
-    finally { finishInitialLoad(); }
+    } catch (cause) { if (request === refreshRequest.current) setError(cause instanceof Error ? cause.message : 'OJ could not load.'); }
+    finally { if (request === refreshRequest.current) finishInitialLoad(); }
   }, [finishInitialLoad]);
   const finishAuth = useCallback(() => { clearAuthCallback(); setAuthMode('sign-in'); void refresh(); }, [refresh]);
 
@@ -62,6 +65,7 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') setAuthMode('reset');
       if (event === 'SIGNED_OUT') {
+        refreshRequest.current += 1;
         const previousOwner = localStorage.getItem('oj-cache-owner');
         if (previousOwner) void clearOwnerDrafts(previousOwner);
         localStorage.removeItem('oj-cache-owner'); setWorkspace(emptyWorkspace()); setWorkflow(null); if (authModeRef.current !== 'activate') setAuthMode('sign-in');

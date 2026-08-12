@@ -1,7 +1,7 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 
 type CardProps = PropsWithChildren<{
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   status?: string;
   metric?: ReactNode;

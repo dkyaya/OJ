@@ -38,3 +38,17 @@ export function normalizePath(hash = window.location.hash): { path: AppPath; leg
 export function navigate(path: AppPath) {
   window.location.hash = path;
 }
+
+export function catalystIdFromHash(hash = typeof window === 'undefined' ? '' : window.location.hash) {
+  const query = hash.replace(/^#/, '').split('?')[1] || '';
+  const catalystId = new URLSearchParams(query).get('catalyst')?.trim() || '';
+  return /^[a-z0-9-]{1,100}$/i.test(catalystId) ? catalystId : '';
+}
+
+export function catalystHash(catalystId: string) {
+  return `#/catalysts?catalyst=${encodeURIComponent(catalystId)}`;
+}
+
+export function navigateToCatalyst(catalystId: string) {
+  window.location.hash = catalystHash(catalystId).replace(/^#/, '');
+}

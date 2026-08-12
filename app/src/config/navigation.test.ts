@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePath, primaryNavigation } from './navigation';
+import { catalystHash, catalystIdFromHash, normalizePath, primaryNavigation } from './navigation';
 
 describe('primary navigation', () => {
   it('contains exactly the six product sections', () => expect(primaryNavigation.map((item) => item.label)).toEqual(['Overview','Catalysts','Ideas','Trades','Journal','Insights']));
@@ -11,4 +11,11 @@ describe('primary navigation', () => {
     expect(primaryNavigation.map((item) => String(item.path))).not.toContain('/workspace');
     expect(normalizePath('#/workspace').path).toBe('/workspace');
   });
+  it('deep-links a War Room while keeping Catalysts as the active section', () => {
+    const id = '20000000-0000-4000-8000-000000000001';
+    expect(catalystHash(id)).toBe(`#/catalysts?catalyst=${id}`);
+    expect(catalystIdFromHash(catalystHash(id))).toBe(id);
+    expect(normalizePath(catalystHash(id)).path).toBe('/catalysts');
+  });
+  it('rejects unsafe catalyst query values', () => expect(catalystIdFromHash('#/catalysts?catalyst=%3Cscript%3E')).toBe(''));
 });
