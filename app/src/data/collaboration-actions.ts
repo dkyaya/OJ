@@ -71,6 +71,14 @@ export async function respondToSharedThesis(input: { sharedThesisId: string; wor
   if (error) throw error;
 }
 
+export async function archiveSharedThesis(sharedThesisId: string) {
+  const user = await approvedUser();
+  const { data, error } = await supabase!.from('shared_theses').update({ archived_at: new Date().toISOString() })
+    .eq('id', sharedThesisId).eq('author_id', user.id).is('archived_at', null).select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('Only the author can remove this thesis, or it has already been removed.');
+}
+
 export async function forkSharedThesis(sharedThesisId: string) {
   await approvedUser();
   const { data, error } = await supabase!.rpc('fork_shared_thesis', { p_shared_thesis_id: sharedThesisId });
@@ -125,21 +133,21 @@ export async function savePersonalForecast(input: { forecastId?: string; workspa
     p_preferred_ticker: input.preferredTicker || null, p_intended_strategy: input.intendedStrategy || null, p_trade_decision: input.tradeDecision,
     p_visibility: input.visibility, p_expected_revision: input.expectedRevision ?? null, p_revision_reason: input.revisionReason || null,
   });
-  if (error) throw error;
+  if (error) throw new Error(error.message || 'Forecast update failed.');
   return String(data);
 }
 
 export async function lockPersonalForecast(forecastId: string, expectedRevision: number) {
   await approvedUser();
   const { data, error } = await supabase!.rpc('lock_personal_forecast', { p_forecast_id: forecastId, p_expected_revision: expectedRevision });
-  if (error) throw error;
+  if (error) throw new Error(error.message || 'Forecast could not be locked.');
   return String(data);
 }
 
 export async function setForecastVisibility(forecastId: string, visibility: 'private' | 'workspace') {
   await approvedUser();
   const { error } = await supabase!.rpc('set_forecast_visibility', { p_forecast_id: forecastId, p_visibility: visibility });
-  if (error) throw error;
+  if (error) throw new Error(error.message || 'Forecast visibility could not be changed.');
 }
 
 export async function saveMissionDebrief(input: { workspaceId: string; missionId: string; catalystId: string; actualResult: string; actualDirection?: string; actualMagnitude?: number; marketReaction: string; keyDriver?: string; whatWorked?: string; whatMissed?: string; unexpectedFactor?: string; sharedSummary?: string; visibility: 'private' | 'workspace' }) {

@@ -9,6 +9,9 @@ describe('Workspace page', () => {
     expect(markup).toContain('Research Missions');
     expect(markup).toContain('Open Questions');
     expect(markup).toContain('No Trade');
+    expect(markup).toContain('Open War Room');
+    expect(markup).toContain('Manage Shared Theses');
+    expect(markup).toContain('without changing the underlying private Ideas');
     expect(markup).not.toContain('Maximum open risk');
     expect(markup).not.toContain('Account capital');
   });
