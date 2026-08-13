@@ -17,5 +17,7 @@ verify_jwt = true
 verify_jwt = true
 [functions.invite-account]
 verify_jwt = true
+[functions.catalyst-intelligence-data]
+verify_jwt = true
 [functions.reconcile-publication]
 verify_jwt = false

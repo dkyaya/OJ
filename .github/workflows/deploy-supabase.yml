@@ -60,6 +60,7 @@ jobs:
           supabase functions deploy submit-formalization --project-ref "$PROJECT_REF"
           supabase functions deploy formalization-status --project-ref "$PROJECT_REF"
           supabase functions deploy invite-account --project-ref "$PROJECT_REF"
+          supabase functions deploy catalyst-intelligence-data --project-ref "$PROJECT_REF"
 
       - name: Deploy the signed reconciliation webhook
         run: supabase functions deploy reconcile-publication --project-ref "$PROJECT_REF" --no-verify-jwt
