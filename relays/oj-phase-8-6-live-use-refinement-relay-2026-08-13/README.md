@@ -1,8 +1,8 @@
 # OJ Phase 8.6 — Live-Use Production Refinement
 
-Date: 2026-08-13  
-Repository: `dkyaya/OJ`  
-Branch: `feature/phase-8-6-live-use-refinement`  
+Date: 2026-08-13
+Repository: `dkyaya/OJ`
+Branch: `feature/phase-8-6-live-use-refinement`
 Recommended PR title: **Refine OJ’s research-to-trade workflow**
 
 ## A. Baseline
