@@ -18,6 +18,10 @@ The calculation requires finite non-negative prices and `ask >= bid`.
 
 This is labeled an approximate priced move. It is not an exact probability boundary.
 
+For a normalized provider chain, OJ pairs calls and puts at identical strikes and selects the stored-underlying's nearest strike. Exact distance ties select the lower strike deterministically. The chain summary calls this **Nearest ATM**, not a recommendation. It uses only the call and put from that same strike; a missing side, invalid quote, or missing underlying produces no straddle estimate.
+
+The midpoint helper prefers a valid bid/ask calculation and may use a stored normalized midpoint when one side of the quote is unavailable. Provider, delayed/current freshness, observation time, and retrieval time remain visible next to the resulting estimate.
+
 **Volatility-implied one-sigma move**
 
 `dollar move = spot × annual IV × sqrt(days to maturity / days in year)`

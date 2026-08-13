@@ -36,3 +36,13 @@ Supabase is the application authority. Commit SHA and note path fields are optio
 `20260812025054_catalyst_first_research_foundation.sql` extends the existing Catalyst and Idea tables and adds three owner-scoped tables: `trade_idea_catalysts`, `research_sources`, and append-only `research_snapshots`. It does not duplicate the Calendar, War Room, evidence, mission, forecast, candidate, or Trade systems. See `CATALYST_FIRST_RESEARCH.md` and `RESEARCH_METHODS.md` for product semantics and calculation conventions.
 
 The structural and rolled-back synthetic two-user checks are `supabase/tests/catalyst-first-research-structure.sql` and `supabase/tests/catalyst-first-research-two-user-rls.sql`. Run them through a trusted SQL test session after the migration. The public frontend deliberately treats only missing new ledger tables as a pending-migration condition; other Supabase errors still fail closed.
+
+## Research snapshot lifecycle
+
+`20260813030000_phase_8_5_1_snapshot_lifecycle.sql` preserves `research_snapshots` as the immutable observation ledger and adds `research_snapshot_lifecycle_events` as an append-only owner-scoped state log. A composite foreign key binds every lifecycle event to the same `(snapshot_id,user_id)` owner. Browser roles receive SELECT only through RLS; removal and restoration run through locked-search-path security-definer RPCs that verify the authenticated account is approved and active and that the snapshot belongs to it. Direct browser INSERT, UPDATE, and DELETE remain unavailable for both lifecycle state and original snapshots.
+
+Each event receives a monotonic identity order. The active state is the latest event by that order, which avoids timestamp/UUID tie ambiguity. The remove and restore RPCs serialize changes per snapshot with a transaction advisory lock and are idempotent when the desired state is already current. A restore without a prior removal fails closed.
+
+The frontend partitions all loaded snapshots once into active and removed collections. Every current intelligence/history/calibration consumer uses the active collection; the removed collection is recovery and audit metadata only. Provider cache rows are service-only infrastructure and are not deleted or changed by Research Ledger removal.
+
+Review checks are `supabase/tests/phase-8-5-1-snapshot-lifecycle-structure.sql` and `supabase/tests/phase-8-5-1-snapshot-lifecycle-two-user-rls.sql`. The latter uses rolled-back synthetic users to prove original-row immutability, same-owner remove/restore, and cross-user invisibility and rejection.

@@ -24,7 +24,7 @@ Useful comparison snapshots include:
 - T+1/T+5 realized move and follow-through.
 - exact source, observed time, fetched time, freshness, and methodology.
 
-Snapshots are append-only. A corrected or later observation creates a new record; it does not rewrite the original market observation.
+Snapshots are append-only. A corrected or later observation creates a new record; it does not rewrite the original market observation. A test, duplicate, or erroneous observation can be removed from active research with an append-only lifecycle event and restored later without modifying or cloning it.
 
 ## Calibration outputs
 
@@ -38,6 +38,8 @@ V1 reports only descriptive statistics when a snapshot includes both an implied 
 - average pre-event drift when recorded.
 
 No confidence interval, win probability, or machine-learned score is produced. Small `n` remains visibly small.
+
+Only active snapshots enter these calculations. The workspace loader resolves the latest monotonic removal/restore event once, then exposes active and removed collections separately. A removed snapshot therefore contributes to none of the following: session-anchor counts, IV Rank or Percentile history, calibration `n`, implied-versus-realized error, pre-event drift, historical lists, or sample-based data quality. Restoration reintroduces the unchanged original record.
 
 ## Data-quality rule
 

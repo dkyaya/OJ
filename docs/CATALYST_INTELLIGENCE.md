@@ -45,12 +45,29 @@ The **Intelligence** tab contains progressive sections:
 
 Provider checks and market requests are explicit button actions. The application does not poll. A loaded provider result is not added to research history until the user chooses **Save**.
 
+### Readable option-chain snapshots
+
+Normalized option chains use the reusable `OptionChainSnapshot` reader before save and in the Research Ledger. The default view pairs calls and puts by strike and shows bid, ask, midpoint, and IV around a central strike column. Contract symbols, volume, open interest, last price, and Greeks remain available under **Contract Details**. The normalized payload remains available, pretty printed, under collapsed **Technical Details**; structured data is never rendered as an inline JSON wall.
+
+The chain header distinguishes provider, freshness, market observation time, retrieval time, and private-cache state. **Delayed** is prominent. `New provider response cached` means the request reached the provider and OJ cached the normalized result; `Private cache hit` means OJ reused a matching private cache record without a new provider request.
+
+The nearest ATM strike minimizes absolute distance from the stored underlying. Exact ties use the lower strike so the result is deterministic; no ATM label appears when the underlying is missing. If that exact strike has both a valid call and put, the existing midpoint and straddle analytics derive the combined dollar and percent move. One-sided or invalid data reports insufficient data rather than mixing strikes.
+
+Manual and provider observations with the same ticker and expiration are presented side by side with provider, freshness, and observation time. OJ does not claim the values are directly comparable when their timestamps differ.
+
+### Snapshot removal and recovery
+
+Snapshots remain immutable after save. **Remove Snapshot** appends a user-owned lifecycle event; it does not edit or delete the original observation. Removed snapshots are excluded from active research, timeline counts, IV context, calibration, history, and data-quality samples. **Removed Snapshots** retains the reason, note, and removal time and can **Restore** the exact original observation with a later append-only lifecycle event.
+
+Removal and restoration require an approved active authenticated owner and atomic RPCs. Another user cannot read or change the lifecycle record. Restoration is explicit, so a stale client refresh cannot recreate removed data. If an observation is wrong, remove it and save a new corrected observation rather than editing history.
+
 ## Privacy and security
 
 - Research snapshots remain owner-scoped by existing RLS.
 - Provider credentials exist only in the Supabase Edge Function environment.
 - The gateway requires an authenticated, approved, active OJ account.
 - The cache is partitioned by user and exposed only to `service_role`.
+- Snapshot lifecycle metadata is owner-only under RLS and browser roles cannot insert, update, or delete it directly.
 - External responses are bounded and normalized before storage.
 - Provider errors are reduced to deterministic codes; secret-bearing upstream messages do not reach the browser.
 - CORS allows the production Pages origin and the local development origin.
@@ -64,4 +81,4 @@ Zero recurring cost is an architectural constraint, not a promise that every req
 
 ## Deployment
 
-Deployment requires migration `20260812224500_phase_8_5_catalyst_intelligence.sql` followed by the JWT-protected `catalyst-intelligence-data` Edge Function. Optional server secrets are documented in [DATA_PROVIDERS.md](./DATA_PROVIDERS.md). The existing manual GitHub workflow deploys the migration and function; the user remains final merge and deployment authority.
+Deployment requires migrations `20260812224500_phase_8_5_catalyst_intelligence.sql` and `20260813030000_phase_8_5_1_snapshot_lifecycle.sql`, followed by the JWT-protected `catalyst-intelligence-data` Edge Function. Optional server secrets are documented in [DATA_PROVIDERS.md](./DATA_PROVIDERS.md). The existing manual GitHub workflow deploys pending migrations and the function; the user remains final merge and deployment authority.
