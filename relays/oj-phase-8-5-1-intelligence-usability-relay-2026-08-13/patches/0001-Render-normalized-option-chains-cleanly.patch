@@ -1,0 +1,385 @@
+From 293c66cf7bf0a80d2c65e1e0eec0929d92470ef9 Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Thu, 13 Aug 2026 09:12:10 -0400
+Subject: [PATCH 1/3] Render normalized option chains cleanly
+
+---
+ app/src/components/CatalystIntelligence.tsx   |   4 +-
+ .../components/OptionChainSnapshot.test.tsx   |  24 ++++
+ app/src/components/OptionChainSnapshot.tsx    |  47 +++++++
+ .../option-chain.test.ts                      |  66 ++++++++++
+ .../lib/catalyst-intelligence/option-chain.ts | 120 ++++++++++++++++++
+ app/src/styles/intelligence.css               |   3 +-
+ app/src/test/fixtures/wmt-option-chain.ts     |  34 +++++
+ 7 files changed, 296 insertions(+), 2 deletions(-)
+ create mode 100644 app/src/components/OptionChainSnapshot.test.tsx
+ create mode 100644 app/src/components/OptionChainSnapshot.tsx
+ create mode 100644 app/src/lib/catalyst-intelligence/option-chain.test.ts
+ create mode 100644 app/src/lib/catalyst-intelligence/option-chain.ts
+ create mode 100644 app/src/test/fixtures/wmt-option-chain.ts
+
+diff --git a/app/src/components/CatalystIntelligence.tsx b/app/src/components/CatalystIntelligence.tsx
+index bee98ed..954909e 100644
+--- a/app/src/components/CatalystIntelligence.tsx
++++ b/app/src/components/CatalystIntelligence.tsx
+@@ -9,6 +9,7 @@ import { sessionDefinitions } from '../lib/catalyst-intelligence/timeline';
+ import type { MarketSnapshot, ProviderStatus, ScenarioInput, TradingSessionLabel, VerticalStrategy } from '../lib/catalyst-intelligence/types';
+ import { spreadMetrics } from '../lib/payoff';
+ import type { Catalyst, TradeIdea, Workspace } from '../types/domain';
++import { OptionChainSnapshot } from './OptionChainSnapshot';
+ 
+ const localDateTime = () => {
+   const now = new Date();
+@@ -57,6 +58,7 @@ export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage
+   const candidateEconomics = selected?.strategy && selected.candidate.longStrike !== undefined && selected.candidate.shortStrike !== undefined && selected.candidate.debit !== undefined
+     ? spreadMetrics(selected.strategy, selected.candidate.longStrike, selected.candidate.shortStrike, selected.candidate.debit, selected.candidate.contracts || 1) : undefined;
+ 
++  // Workspace loading centralizes lifecycle filtering, so every analytical view receives active observations only.
+   const snapshots = workspace.researchSnapshots.filter((item) => item.catalystId === catalyst.id);
+   const currentIv = percent(manual.atmIv);
+   const ivHistory = snapshots.map((item) => valueNumber(item.values.implied_volatility)).filter((item): item is number => item !== undefined).map((item) => item > 1 ? item / 100 : item);
+@@ -163,8 +165,8 @@ export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage
+ 
+     <details className="card intelligence-panel"><summary><span><CloudDownload size={17} />Providers &amp; Methodology</span><small>Explicit refresh only</small></summary>
+       <div className="provider-grid">{providers.map((provider) => <article key={provider.id}><span className={`quality-dot ${provider.availability}`} /> <b>{provider.label}</b><small>{provider.availability.replaceAll('_', ' ')} · {provider.freshness}</small><p>{provider.detail}</p></article>)}</div>
++      {fetched.snapshots.length > 0 && <div className="provider-chain-preview"><OptionChainSnapshot contracts={fetched.snapshots} cache={fetched.cache} /></div>}
+       <div className="panel-actions"><button disabled={busy} onClick={() => void fetchProviders()}><CloudDownload size={16} />Check Provider Status</button><label className="inline-control"><span>Nearby strikes</span><input type="number" min="1" max="10" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} /></label><button disabled={busy || !manual.ticker || !manual.expiration} onClick={() => void fetchOptions()}>Load Delayed Options</button>{fetched.snapshots.length > 0 && <button className="primary" disabled={busy} onClick={() => void saveFetched()}>Save {fetched.snapshots.length} Contracts</button>}</div>
+-      {fetched.snapshots.length > 0 && <p className="method-note">{fetched.cache?.hit ? 'Private cache hit' : 'New provider response cached'} · fetched {fetched.cache?.fetchedAt ? new Date(fetched.cache.fetchedAt).toLocaleString() : 'now'} · delayed data cannot be treated as current.</p>}
+       <p className="method-note">No polling. MarketData requests require one ticker, one exact expiration, and at most 10 nearby strikes. BLS and Treasury use public official endpoints. SEC requires a request identity; FRED, BEA, Census, and MarketData use optional server secrets. Missing credentials never disable manual entry.</p>
+     </details>
+   </section>;
+diff --git a/app/src/components/OptionChainSnapshot.test.tsx b/app/src/components/OptionChainSnapshot.test.tsx
+new file mode 100644
+index 0000000..b26571a
+--- /dev/null
++++ b/app/src/components/OptionChainSnapshot.test.tsx
+@@ -0,0 +1,24 @@
++import { renderToStaticMarkup } from 'react-dom/server';
++import { describe, expect, it } from 'vitest';
++import { wmtOptionChainFixture } from '../test/fixtures/wmt-option-chain';
++import { OptionChainSnapshot } from './OptionChainSnapshot';
++
++describe('OptionChainSnapshot', () => {
++  it('renders a readable paired table, freshness, timestamps, summary, and disclosures', () => {
++    const markup = renderToStaticMarkup(<OptionChainSnapshot contracts={wmtOptionChainFixture} cache={{ hit: true, fetchedAt: '2026-08-13T03:57:00Z' }} technicalValues={{ option_chain: wmtOptionChainFixture }} />);
++    expect(markup).toContain('WMT');
++    expect(markup).toContain('12 contracts');
++    expect(markup).toContain('Call Bid');
++    expect(markup).toContain('Put IV');
++    expect(markup).toContain('ATM');
++    expect(markup).toContain('delayed');
++    expect(markup).toContain('Observed');
++    expect(markup).toContain('Fetched');
++    expect(markup).toContain('Private cache hit');
++    expect(markup).toContain('Contract Details');
++    expect(markup).toContain('Open interest');
++    expect(markup).toContain('Delta');
++    expect(markup).toContain('Technical Details');
++    expect(markup).not.toContain('option_chain: [{');
++  });
++});
+diff --git a/app/src/components/OptionChainSnapshot.tsx b/app/src/components/OptionChainSnapshot.tsx
+new file mode 100644
+index 0000000..634d3d1
+--- /dev/null
++++ b/app/src/components/OptionChainSnapshot.tsx
+@@ -0,0 +1,47 @@
++import type { MarketSnapshot } from '../lib/catalyst-intelligence/types';
++import { analyzeOptionChain, optionMidpoint } from '../lib/catalyst-intelligence/option-chain';
++
++type CacheMetadata = { hit: boolean; fetchedAt: string };
++const number = (value?: number, digits = 2) => value === undefined ? '—' : value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
++const money = (value?: number) => value === undefined ? '—' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(value);
++const percent = (value?: number) => value === undefined ? '—' : `${(value * 100).toFixed(1)}%`;
++const dateTime = (value?: string) => value ? new Date(value).toLocaleString() : 'Not recorded';
++const date = (value?: string) => value ? new Date(`${value}T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'Expiration not recorded';
++
++const ContractDetail = ({ contract, label }: { contract?: MarketSnapshot; label: string }) => <div className="option-contract-detail">
++  <b>{label}</b>
++  {contract ? <dl>
++    <div><dt>Symbol</dt><dd>{contract.contractSymbol || '—'}</dd></div><div><dt>Last</dt><dd>{number(contract.last)}</dd></div>
++    <div><dt>Volume</dt><dd>{number(contract.volume, 0)}</dd></div><div><dt>Open interest</dt><dd>{number(contract.openInterest, 0)}</dd></div>
++    <div><dt>Delta</dt><dd>{number(contract.delta, 3)}</dd></div><div><dt>Gamma</dt><dd>{number(contract.gamma, 3)}</dd></div>
++    <div><dt>Theta</dt><dd>{number(contract.theta, 3)}</dd></div><div><dt>Vega</dt><dd>{number(contract.vega, 3)}</dd></div>
++  </dl> : <span>No contract at this strike.</span>}
++</div>;
++
++export function OptionChainSnapshot({ contracts, cache, technicalValues }: { contracts: MarketSnapshot[]; cache?: CacheMetadata; technicalValues?: Record<string, unknown> }) {
++  const chain = analyzeOptionChain(contracts);
++  if (!chain) return <p className="muted-copy">No usable option contracts were found in this snapshot.</p>;
++  return <section className="option-chain" aria-label={`${chain.ticker} option chain`}>
++    <header className="option-chain-header">
++      <div><span className="eyebrow">Paired option chain</span><h4>{chain.ticker} · {date(chain.expiration)}</h4><p>{chain.contractCount} contracts · underlying {money(chain.underlyingPrice)} · {chain.provider}</p></div>
++      <span className={`freshness-badge ${chain.freshness}`}>{chain.freshness}</span>
++    </header>
++    <dl className="option-chain-provenance">
++      <div><dt>Observed</dt><dd>{dateTime(chain.observedAt)}</dd></div><div><dt>Fetched</dt><dd>{dateTime(chain.fetchedAt)}</dd></div>
++      <div><dt>Source</dt><dd>{chain.sourceReference || 'Stored private observation'}</dd></div><div><dt>Cache</dt><dd>{cache ? `${cache.hit ? 'Private cache hit' : 'New provider response cached'} · ${dateTime(cache.fetchedAt)}` : 'Not recorded with saved snapshot'}</dd></div>
++    </dl>
++    {chain.atmSummary && <div className="atm-summary"><span>Nearest ATM · {number(chain.atmStrike)}</span><b>{money(chain.atmSummary.callMidpoint)} call + {money(chain.atmSummary.putMidpoint)} put = ±{money(chain.atmSummary.dollarMove)} / {number(chain.atmSummary.percentMove)}%</b><small>Midpoints use bid/ask when both are valid. Exact strike-distance ties use the lower strike.</small></div>}
++    <div className="option-chain-scroll" tabIndex={0} aria-label="Horizontally scrollable paired option-chain table">
++      <table>
++        <thead><tr><th>Call Bid</th><th>Ask</th><th>Mid</th><th>IV</th><th className="strike-column">Strike</th><th>Put IV</th><th>Mid</th><th>Bid</th><th>Ask</th></tr></thead>
++        <tbody>{chain.rows.map((row) => <tr key={row.strike} className={row.atm ? 'atm-row' : undefined}>
++          <td>{number(row.call?.bid)}</td><td>{number(row.call?.ask)}</td><td>{number(optionMidpoint(row.call))}</td><td>{percent(row.call?.impliedVolatility)}</td>
++          <th scope="row" className="strike-column">{number(row.strike)}{row.atm && <small>ATM</small>}</th>
++          <td>{percent(row.put?.impliedVolatility)}</td><td>{number(optionMidpoint(row.put))}</td><td>{number(row.put?.bid)}</td><td>{number(row.put?.ask)}</td>
++        </tr>)}</tbody>
++      </table>
++    </div>
++    <details className="chain-details"><summary>Contract Details</summary><div>{chain.rows.map((row) => <section key={row.strike}><h5>{number(row.strike)} strike{row.atm ? ' · nearest ATM' : ''}</h5><ContractDetail contract={row.call} label="Call" /><ContractDetail contract={row.put} label="Put" /></section>)}</div></details>
++    {technicalValues && <details className="technical-details"><summary>Technical Details</summary><pre>{JSON.stringify(technicalValues, null, 2)}</pre></details>}
++  </section>;
++}
+diff --git a/app/src/lib/catalyst-intelligence/option-chain.test.ts b/app/src/lib/catalyst-intelligence/option-chain.test.ts
+new file mode 100644
+index 0000000..098acdd
+--- /dev/null
++++ b/app/src/lib/catalyst-intelligence/option-chain.test.ts
+@@ -0,0 +1,66 @@
++import { describe, expect, it } from 'vitest';
++import { analyzeOptionChain, optionMidpoint, parseStoredOptionChain } from './option-chain';
++import type { MarketSnapshot } from './types';
++
++const contract = (strike: number, optionSide: 'call' | 'put', overrides: Partial<MarketSnapshot> = {}): MarketSnapshot => ({
++  provider: 'fixture-provider', sourceQuality: 'secondary', observedAt: '2026-08-13T13:00:00Z', fetchedAt: '2026-08-13T13:05:00Z', freshness: 'delayed',
++  ticker: 'SYNTH', underlyingPrice: 102.5, expiration: '2026-09-18', contractSymbol: `SYNTH-${strike}-${optionSide}`, optionSide, strike,
++  bid: optionSide === 'call' ? 2 : 1.8, ask: optionSide === 'call' ? 2.4 : 2.2, impliedVolatility: 0.25,
++  methodology: 'Synthetic option-chain fixture.', provenance: 'provider', ...overrides,
++});
++
++describe('option-chain transformation', () => {
++  it('pairs calls and puts by strike and marks the deterministic nearest ATM row', () => {
++    const result = analyzeOptionChain([100, 105, 110].flatMap((strike) => [contract(strike, 'call'), contract(strike, 'put')]));
++    expect(result?.rows).toHaveLength(3);
++    expect(result?.contractCount).toBe(6);
++    expect(result?.atmStrike).toBe(100); // 102.5 is an exact tie; lower strike wins.
++    expect(result?.rows.find((row) => row.atm)).toMatchObject({ strike: 100, call: { optionSide: 'call' }, put: { optionSide: 'put' } });
++    expect(result?.atmSummary).toMatchObject({ callMidpoint: 2.2, putMidpoint: 2 });
++    expect(result?.atmSummary?.percentMove).toBeCloseTo((4.2 / 102.5) * 100);
++  });
++
++  it('keeps incomplete rows, missing IV, zero bid/ask, and one-sided chains usable', () => {
++    const result = analyzeOptionChain([
++      contract(100, 'call', { bid: 0, ask: 0, impliedVolatility: undefined }),
++      contract(105, 'put', { bid: undefined, ask: 1.1, midpoint: 0.9 }),
++    ]);
++    expect(result?.rows).toHaveLength(2);
++    expect(result?.rows[0].put).toBeUndefined();
++    expect(optionMidpoint(result?.rows[0].call)).toBe(0);
++    expect(optionMidpoint(result?.rows[1].put)).toBe(0.9);
++    expect(result?.atmSummary).toBeUndefined();
++  });
++
++  it('handles unsorted call-only and put-only chains without inventing the missing side', () => {
++    const calls = analyzeOptionChain([contract(110, 'call'), contract(100, 'call'), contract(105, 'call')]);
++    const puts = analyzeOptionChain([contract(105, 'put'), contract(110, 'put'), contract(100, 'put')]);
++    expect(calls?.rows.map((row) => row.strike)).toEqual([100, 105, 110]);
++    expect(calls?.rows.every((row) => row.put === undefined)).toBe(true);
++    expect(puts?.rows.every((row) => row.call === undefined)).toBe(true);
++  });
++
++  it('does not guess ATM or a straddle summary when underlying is missing', () => {
++    const result = analyzeOptionChain([contract(100, 'call', { underlyingPrice: undefined }), contract(100, 'put', { underlyingPrice: undefined })]);
++    expect(result?.atmStrike).toBeUndefined();
++    expect(result?.rows.some((row) => row.atm)).toBe(false);
++    expect(result?.atmSummary).toBeUndefined();
++  });
++
++  it('deduplicates a same-side strike deterministically in favor of the richer contract', () => {
++    const sparse = contract(100, 'call', { contractSymbol: 'A', bid: undefined, ask: undefined, impliedVolatility: undefined });
++    const rich = contract(100, 'call', { contractSymbol: 'B', volume: 25, openInterest: 100 });
++    expect(analyzeOptionChain([sparse, rich])?.rows[0].call?.contractSymbol).toBe('B');
++  });
++
++  it('handles malformed and empty stored chains without throwing', () => {
++    expect(parseStoredOptionChain(null)).toEqual([]);
++    expect(parseStoredOptionChain([{ ticker: 'SYNTH' }, null, 'raw'])).toEqual([]);
++    expect(analyzeOptionChain([])).toBeUndefined();
++  });
++
++  it('normalizes snake-case legacy fields', () => {
++    const parsed = parseStoredOptionChain([{ ticker: 'synth', option_side: 'put', strike: '100', observed_at: '2026-08-13T13:00:00Z', fetched_at: '2026-08-13T13:05:00Z', underlying_price: '101', open_interest: '42', methodology: 'Legacy fixture.' }]);
++    expect(parsed[0]).toMatchObject({ ticker: 'SYNTH', optionSide: 'put', strike: 100, underlyingPrice: 101, openInterest: 42 });
++  });
++});
+diff --git a/app/src/lib/catalyst-intelligence/option-chain.ts b/app/src/lib/catalyst-intelligence/option-chain.ts
+new file mode 100644
+index 0000000..17ba5af
+--- /dev/null
++++ b/app/src/lib/catalyst-intelligence/option-chain.ts
+@@ -0,0 +1,120 @@
++import { midpoint, straddleImpliedMove } from './analytics';
++import type { DataFreshness, MarketSnapshot, OptionSide } from './types';
++
++const record = (value: unknown): Record<string, unknown> | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
++const text = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : undefined;
++const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : typeof value === 'string' && value.trim() && Number.isFinite(Number(value)) ? Number(value) : undefined;
++const pick = (row: Record<string, unknown>, camel: string, snake: string) => row[camel] ?? row[snake];
++const freshness = (value: unknown): DataFreshness => ['current', 'delayed', 'historical', 'manual'].includes(String(value)) ? value as DataFreshness : 'manual';
++const quality = (value: unknown): MarketSnapshot['sourceQuality'] => ['official', 'primary', 'secondary', 'unverified'].includes(String(value)) ? value as MarketSnapshot['sourceQuality'] : 'unverified';
++const side = (value: unknown): OptionSide | undefined => value === 'call' || value === 'put' ? value : undefined;
++
++export function parseStoredOptionChain(value: unknown): MarketSnapshot[] {
++  if (!Array.isArray(value)) return [];
++  return value.flatMap((item) => {
++    const row = record(item);
++    if (!row) return [];
++    const optionSide = side(pick(row, 'optionSide', 'option_side'));
++    const strike = finite(row.strike);
++    const ticker = text(row.ticker);
++    if (!optionSide || strike === undefined || strike <= 0 || !ticker) return [];
++    const observedAt = text(pick(row, 'observedAt', 'observed_at')) || text(pick(row, 'fetchedAt', 'fetched_at')) || '';
++    const fetchedAt = text(pick(row, 'fetchedAt', 'fetched_at')) || observedAt;
++    return [{
++      provider: text(row.provider) || 'manual',
++      sourceReference: text(pick(row, 'sourceReference', 'source_reference')),
++      sourceQuality: quality(pick(row, 'sourceQuality', 'source_quality')),
++      observedAt,
++      fetchedAt,
++      freshness: freshness(row.freshness),
++      ticker: ticker.toUpperCase(),
++      assetType: text(pick(row, 'assetType', 'asset_type')),
++      underlyingPrice: finite(pick(row, 'underlyingPrice', 'underlying_price')),
++      expiration: text(row.expiration),
++      contractSymbol: text(pick(row, 'contractSymbol', 'contract_symbol')),
++      optionSide,
++      strike,
++      bid: finite(row.bid), ask: finite(row.ask), midpoint: finite(row.midpoint), last: finite(row.last),
++      volume: finite(row.volume), openInterest: finite(pick(row, 'openInterest', 'open_interest')),
++      impliedVolatility: finite(pick(row, 'impliedVolatility', 'implied_volatility')),
++      delta: finite(row.delta), gamma: finite(row.gamma), theta: finite(row.theta), vega: finite(row.vega),
++      methodology: text(row.methodology) || 'Stored option-chain observation.',
++      provenance: row.provenance === 'provider' ? 'provider' : 'manual',
++      sessionLabel: text(pick(row, 'sessionLabel', 'session_label')) as MarketSnapshot['sessionLabel'],
++      sourceDate: text(pick(row, 'sourceDate', 'source_date')),
++      calendarDaysToCatalyst: finite(pick(row, 'calendarDaysToCatalyst', 'calendar_days_to_catalyst')),
++      catalystTimezone: text(pick(row, 'catalystTimezone', 'catalyst_timezone')),
++      catalystSession: text(pick(row, 'catalystSession', 'catalyst_session')),
++    }];
++  });
++}
++
++export type OptionChainRow = { strike: number; call?: MarketSnapshot; put?: MarketSnapshot; atm: boolean };
++export type OptionChainAnalysis = {
++  ticker: string;
++  expiration?: string;
++  underlyingPrice?: number;
++  provider: string;
++  freshness: DataFreshness;
++  observedAt?: string;
++  fetchedAt?: string;
++  sourceReference?: string;
++  methodology?: string;
++  contractCount: number;
++  atmStrike?: number;
++  rows: OptionChainRow[];
++  atmSummary?: { callMidpoint: number; putMidpoint: number; dollarMove: number; percentMove: number };
++};
++
++export const optionMidpoint = (contract?: MarketSnapshot) => {
++  if (!contract) return undefined;
++  return midpoint(contract.bid, contract.ask) ?? contract.midpoint;
++};
++
++const completeness = (contract: MarketSnapshot) => [contract.bid, contract.ask, contract.midpoint, contract.impliedVolatility, contract.volume, contract.openInterest, contract.delta, contract.gamma, contract.theta, contract.vega].filter((item) => item !== undefined).length;
++const preferredContract = (left: MarketSnapshot, right: MarketSnapshot) => {
++  const score = completeness(right) - completeness(left);
++  if (score) return score > 0 ? right : left;
++  const time = (right.fetchedAt || right.observedAt).localeCompare(left.fetchedAt || left.observedAt);
++  if (time) return time > 0 ? right : left;
++  return (right.contractSymbol || '').localeCompare(left.contractSymbol || '') > 0 ? right : left;
++};
++
++export function analyzeOptionChain(contracts: MarketSnapshot[]): OptionChainAnalysis | undefined {
++  const valid = contracts.filter((item) => item.optionSide && item.strike !== undefined && Number.isFinite(item.strike));
++  if (!valid.length) return undefined;
++  const reference = [...valid].sort((a, b) => (b.fetchedAt || b.observedAt).localeCompare(a.fetchedAt || a.observedAt) || (a.contractSymbol || '').localeCompare(b.contractSymbol || ''))[0];
++  const underlyingPrice = reference.underlyingPrice ?? valid.find((item) => item.underlyingPrice !== undefined)?.underlyingPrice;
++  const strikes = [...new Set(valid.map((item) => item.strike!))].sort((a, b) => a - b);
++  // On an exact distance tie, the lower strike wins so the ATM marker is stable.
++  const atmStrike = underlyingPrice === undefined ? undefined : strikes.reduce((nearest, strike) => Math.abs(strike - underlyingPrice) < Math.abs(nearest - underlyingPrice) ? strike : nearest, strikes[0]);
++  const grouped = new Map<number, { call?: MarketSnapshot; put?: MarketSnapshot }>();
++  for (const contract of valid) {
++    const row = grouped.get(contract.strike!) || {};
++    const key = contract.optionSide!;
++    row[key] = row[key] ? preferredContract(row[key]!, contract) : contract;
++    grouped.set(contract.strike!, row);
++  }
++  const rows = strikes.map((strike) => ({ strike, ...grouped.get(strike), atm: strike === atmStrike }));
++  const atm = rows.find((row) => row.atm);
++  const callMidpoint = optionMidpoint(atm?.call);
++  const putMidpoint = optionMidpoint(atm?.put);
++  const move = callMidpoint !== undefined && putMidpoint !== undefined && underlyingPrice !== undefined && underlyingPrice > 0
++    ? straddleImpliedMove(callMidpoint, putMidpoint, underlyingPrice)
++    : undefined;
++  return {
++    ticker: reference.ticker,
++    expiration: reference.expiration || valid.find((item) => item.expiration)?.expiration,
++    underlyingPrice,
++    provider: reference.provider,
++    freshness: reference.freshness,
++    observedAt: reference.observedAt || undefined,
++    fetchedAt: reference.fetchedAt || undefined,
++    sourceReference: reference.sourceReference,
++    methodology: reference.methodology,
++    contractCount: valid.length,
++    atmStrike,
++    rows,
++    atmSummary: move && callMidpoint !== undefined && putMidpoint !== undefined ? { callMidpoint, putMidpoint, ...move } : undefined,
++  };
++}
+diff --git a/app/src/styles/intelligence.css b/app/src/styles/intelligence.css
+index 98c5e46..596f1da 100644
+--- a/app/src/styles/intelligence.css
++++ b/app/src/styles/intelligence.css
+@@ -1,4 +1,5 @@
+ .intelligence-layer{display:grid;gap:16px}.intelligence-layer>.section-heading{margin:0}.intelligence-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.metric-card{display:grid;gap:5px;min-width:0}.metric-card>span,.metric-card>small{color:var(--muted);font-size:10px}.metric-card>strong{font-size:21px;overflow-wrap:anywhere}.intelligence-panel{padding:0;overflow:hidden}.intelligence-panel>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;cursor:pointer;list-style:none}.intelligence-panel>summary::-webkit-details-marker{display:none}.intelligence-panel>summary>span{display:flex;align-items:center;gap:8px;font-weight:800}.intelligence-panel>summary>small{color:var(--muted)}.intelligence-panel[open]>summary{border-bottom:1px solid var(--line)}.intelligence-panel>.intelligence-form,.intelligence-panel>.scenario-toolbar,.intelligence-panel>.scenario-grid,.intelligence-panel>.economics-grid,.intelligence-panel>.timeline-anchors,.intelligence-panel>.calibration-grid,.intelligence-panel>.intelligence-history,.intelligence-panel>.provider-grid,.intelligence-panel>.method-note{margin:16px 18px}.intelligence-form textarea{min-height:72px}.panel-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;padding:14px 18px;border-top:1px solid var(--line);background:var(--surface-2)}.panel-actions>span{margin-right:auto;color:var(--muted);font-size:11px}.scenario-toolbar{display:grid;grid-template-columns:2fr 1fr;gap:12px}.scenario-toolbar label,.scenario-grid label,.inline-control{display:grid;gap:5px}.scenario-toolbar span,.scenario-grid label>span,.inline-control>span{font-size:10px;font-weight:800}.scenario-toolbar select,.scenario-toolbar input,.scenario-grid input,.inline-control input{width:100%;min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink);padding:8px 10px}.economics-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}.economics-grid>div{padding:10px;border-radius:9px;background:var(--surface-2)}.economics-grid dt{color:var(--muted);font-size:9px;text-transform:uppercase}.economics-grid dd{margin:4px 0 0;font-weight:800}.scenario-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.scenario-grid>article{display:grid;gap:10px;padding:13px;border:1px solid var(--line);border-radius:11px;background:var(--bg)}.scenario-grid h3{margin:0}.scenario-output{display:grid;gap:3px;padding:9px;border-radius:8px;background:var(--orange-soft);color:var(--orange)}.scenario-output span{font-size:10px}.method-note{color:var(--muted);font-size:10px;line-height:1.55}.timeline-anchors{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}.timeline-anchors>div{display:grid;gap:4px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--bg)}.timeline-anchors b{color:var(--orange)}.timeline-anchors span,.timeline-anchors small{font-size:9px}.timeline-anchors small{color:var(--muted)}.intelligence-calibration{grid-template-columns:repeat(4,minmax(0,1fr))}.intelligence-history{display:grid;gap:7px}.intelligence-history article{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg)}.intelligence-history span,.intelligence-history small{color:var(--muted);font-size:9px}.intelligence-history small{grid-column:1/-1}.provider-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.provider-grid article{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:5px 7px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--bg)}.provider-grid article>small{color:var(--muted);font-size:9px}.provider-grid article>p{grid-column:2/-1;margin:0;color:var(--muted);font-size:10px}.quality-dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.quality-dot.available{background:var(--green)}.quality-dot.configuration_needed{background:var(--orange)}.inline-control{grid-template-columns:auto 70px;align-items:center}.inline-control input{min-height:36px}
++.provider-chain-preview{margin:16px 18px}.option-chain{display:grid;gap:12px;min-width:0;padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--bg)}.option-chain-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.option-chain-header h4{margin:2px 0;font-size:18px}.option-chain-header p{margin:0;color:var(--muted);font-size:11px}.freshness-badge{display:inline-flex;align-items:center;flex:none;border-radius:999px;padding:5px 8px;background:var(--surface-2);color:var(--muted);font:500 9px DM Mono,monospace;text-transform:uppercase}.freshness-badge.delayed,.freshness-badge.manual{background:var(--orange-soft);color:var(--orange)}.freshness-badge.current{background:var(--green-soft);color:var(--green)}.freshness-badge.historical{background:var(--blue-soft);color:var(--blue)}.option-chain-provenance{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:0}.option-chain-provenance>div{min-width:0;padding:8px 9px;border-radius:8px;background:var(--surface)}.option-chain-provenance dt{color:var(--muted);font-size:8px;text-transform:uppercase}.option-chain-provenance dd{margin:2px 0 0;font-size:10px;overflow-wrap:anywhere}.atm-summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--orange) 40%,var(--line));border-radius:10px;background:var(--orange-soft)}.atm-summary span{color:var(--orange);font-size:10px;font-weight:800}.atm-summary b{text-align:right;font-size:11px}.atm-summary small{grid-column:1/-1;color:var(--muted);font-size:9px}.option-chain-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;border:1px solid var(--line);border-radius:10px;background:var(--surface);scrollbar-width:thin}.option-chain table{width:100%;min-width:760px;border-collapse:separate;border-spacing:0;font:500 10px DM Mono,monospace;text-align:right}.option-chain th,.option-chain td{padding:8px 9px;border-bottom:1px solid var(--line);white-space:nowrap}.option-chain thead th{position:sticky;top:0;z-index:2;background:var(--surface-2);color:var(--muted);font-size:8px;text-transform:uppercase}.option-chain tbody tr:last-child>*{border-bottom:0}.option-chain .strike-column{text-align:center;background:color-mix(in srgb,var(--surface-2) 90%,var(--orange-soft));color:var(--ink);font-weight:800}.option-chain .strike-column small{display:block;color:var(--orange);font-size:7px}.option-chain .atm-row td,.option-chain .atm-row th{box-shadow:inset 0 1px color-mix(in srgb,var(--orange) 55%,transparent),inset 0 -1px color-mix(in srgb,var(--orange) 55%,transparent)}.chain-details,.technical-details{border-top:1px solid var(--line);padding-top:10px}.chain-details>summary,.technical-details>summary{cursor:pointer;color:var(--muted);font-size:10px;font-weight:800}.chain-details>div{display:grid;gap:8px;margin-top:10px}.chain-details section{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.chain-details h5{grid-column:1/-1;margin:0;color:var(--orange)}.option-contract-detail{min-width:0;padding:9px;border-radius:8px;background:var(--surface)}.option-contract-detail>span{color:var(--muted);font-size:9px}.option-contract-detail dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin:6px 0 0}.option-contract-detail dl>div{min-width:0}.option-contract-detail dt{color:var(--muted);font-size:8px}.option-contract-detail dd{margin:1px 0 0;font-size:9px;overflow-wrap:anywhere}.technical-details pre{max-height:280px;overflow:auto;margin:10px 0 0;padding:11px;border-radius:8px;background:var(--surface-2);font:400 9px/1.5 DM Mono,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+ @media(max-width:1050px){.intelligence-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.economics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.timeline-anchors{grid-template-columns:repeat(3,minmax(0,1fr))}}
+-@media(max-width:700px){.intelligence-summary,.scenario-grid,.provider-grid,.scenario-toolbar{grid-template-columns:1fr}.economics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.timeline-anchors{grid-template-columns:repeat(2,minmax(0,1fr))}.intelligence-calibration{grid-template-columns:repeat(2,minmax(0,1fr))}.intelligence-panel>summary{align-items:flex-start}.intelligence-panel>summary>small{text-align:right}.panel-actions{justify-content:stretch}.panel-actions button{flex:1}.panel-actions .inline-control{width:100%;grid-template-columns:minmax(0,1fr) 80px}.intelligence-history article{grid-template-columns:1fr}.intelligence-history small{grid-column:auto}}
++@media(max-width:700px){.intelligence-summary,.scenario-grid,.provider-grid,.scenario-toolbar{grid-template-columns:1fr}.economics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.timeline-anchors{grid-template-columns:repeat(2,minmax(0,1fr))}.intelligence-calibration{grid-template-columns:repeat(2,minmax(0,1fr))}.intelligence-panel>summary{align-items:flex-start}.intelligence-panel>summary>small{text-align:right}.panel-actions{justify-content:stretch}.panel-actions button{flex:1}.panel-actions .inline-control{width:100%;grid-template-columns:minmax(0,1fr) 80px}.intelligence-history article{grid-template-columns:1fr}.intelligence-history small{grid-column:auto}.option-chain-provenance,.chain-details section{grid-template-columns:1fr}.atm-summary{grid-template-columns:1fr}.atm-summary b{text-align:left}.provider-chain-preview{margin:12px}.option-chain{padding:11px}.option-chain table{min-width:680px}.chain-details h5{grid-column:auto}.option-chain-scroll{margin-inline:-2px}}
+ @media(max-width:440px){.intelligence-summary,.economics-grid,.timeline-anchors,.intelligence-calibration{grid-template-columns:1fr}.intelligence-panel>summary>small{display:none}}
+diff --git a/app/src/test/fixtures/wmt-option-chain.ts b/app/src/test/fixtures/wmt-option-chain.ts
+new file mode 100644
+index 0000000..274cf4f
+--- /dev/null
++++ b/app/src/test/fixtures/wmt-option-chain.ts
+@@ -0,0 +1,34 @@
++import type { MarketSnapshot } from '../../lib/catalyst-intelligence/types';
++
++const strikes = [110, 112, 114, 116, 118, 120];
++
++export const wmtOptionChainFixture: MarketSnapshot[] = strikes.flatMap((strike, strikeIndex) => (['call', 'put'] as const).map((optionSide) => {
++  const distance = Math.abs(strike - 116);
++  const bid = Number((1.05 + distance * 0.28 + (optionSide === 'call' ? Math.max(116 - strike, 0) * 0.55 : Math.max(strike - 116, 0) * 0.55)).toFixed(2));
++  return {
++    provider: 'fixture-provider',
++    sourceReference: 'Synthetic delayed-provider fixture',
++    sourceQuality: 'secondary',
++    observedAt: '2026-08-12T20:00:00Z',
++    fetchedAt: '2026-08-13T03:57:00Z',
++    freshness: 'delayed',
++    ticker: 'WMT',
++    underlyingPrice: 116.23,
++    expiration: '2026-08-21',
++    contractSymbol: `WMT-SYNTH-${strike}-${optionSide}`,
++    optionSide,
++    strike,
++    bid,
++    ask: Number((bid + 0.16).toFixed(2)),
++    last: Number((bid + 0.06).toFixed(2)),
++    volume: 120 + strikeIndex * 17,
++    openInterest: 800 + strikeIndex * 91,
++    impliedVolatility: 0.27 + distance * 0.002,
++    delta: optionSide === 'call' ? 0.5 - (strike - 116) * 0.055 : -0.5 - (strike - 116) * 0.055,
++    gamma: 0.041 - distance * 0.002,
++    theta: -0.083 - distance * 0.003,
++    vega: 0.091 - distance * 0.002,
++    methodology: 'Synthetic normalized option-chain fixture; no provider request.',
++    provenance: 'provider',
++  };
++}));
+-- 
+2.50.1 (Apple Git-155)
+
