@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ideaDeletionError, ideaLifecycleError } from './actions';
+import { ideaDeletionError, ideaLifecycleError, snapshotLifecycleError } from './actions';
 
 describe('idea lifecycle error copy', () => {
   it('maps revision conflicts without exposing database details', () => {
@@ -30,5 +30,16 @@ describe('idea deletion error copy', () => {
   it('protects journal history and hides unknown backend details', () => {
     expect(ideaDeletionError(new Error('ideas with trade or journal history cannot be deleted'))).toBe('Ideas with trade or journal history cannot be deleted.');
     expect(ideaDeletionError(new Error('private implementation detail'))).toBe('OJ could not delete this idea. Nothing was changed.');
+  });
+});
+
+describe('snapshot lifecycle error copy', () => {
+  it('maps rollout and validation failures without exposing backend details', () => {
+    expect(snapshotLifecycleError(new Error('Could not find the function public.remove_research_snapshot in the schema cache'))).toContain('finishing its snapshot-lifecycle database update');
+    expect(snapshotLifecycleError(new Error('invalid_removal_reason'))).toContain('valid removal reason');
+  });
+
+  it('keeps ownership failures private', () => {
+    expect(snapshotLifecycleError(new Error('snapshot_not_found'))).toBe('OJ could not find a snapshot owned by this account.');
   });
 });

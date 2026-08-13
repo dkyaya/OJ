@@ -1,7 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { clearDraft, removeOperation } from '../storage/drafts';
-import type { AccountPolicy } from '../types/domain';
-import type { CatalystDateCertainty, CatalystScheduleKind, SnapshotType, SourceQuality } from '../types/domain';
+import type { AccountPolicy, CatalystDateCertainty, CatalystScheduleKind, ResearchSnapshotRemovalReason, SnapshotType, SourceQuality } from '../types/domain';
 import { zonedEventIso } from '../lib/date-time';
 
 const httpUrl = (value: string) => {
@@ -194,4 +193,28 @@ export async function saveResearchSnapshot(input: {
     catalyst_timezone: input.catalystTimezone?.trim() || null, catalyst_session: input.catalystSession || null,
   }).select().single();
   if (error) throw new Error(/research_snapshots|schema cache|could not find the table/i.test(error.message) ? 'OJ is finishing its catalyst-research database update. Try again after the Supabase workflow completes.' : error.message); return data;
+}
+
+export const snapshotLifecycleError = (error: unknown) => {
+  const detail = error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error || '');
+  if (/could not find the function|function .* does not exist|schema cache|research_snapshot_lifecycle/i.test(detail)) return 'OJ is finishing its snapshot-lifecycle database update. Try again after the Supabase workflow completes.';
+  if (/snapshot_not_found|row-level security|permission denied|approved_account_required/i.test(detail)) return 'OJ could not find a snapshot owned by this account.';
+  if (/invalid_removal_reason/i.test(detail)) return 'Choose a valid removal reason.';
+  return 'OJ could not update this snapshot. Nothing was changed.';
+};
+
+export async function removeResearchSnapshot(input: { snapshotId: string; reason: ResearchSnapshotRemovalReason; note?: string }) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Connect to the internet to remove a snapshot. OJ did not queue this lifecycle change.');
+  await approvedUser();
+  const { data, error } = await supabase!.rpc('remove_research_snapshot', { p_snapshot_id: input.snapshotId, p_reason: input.reason, p_note: input.note?.trim() || null });
+  if (error) throw new Error(snapshotLifecycleError(error));
+  return data;
+}
+
+export async function restoreResearchSnapshot(snapshotId: string) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Connect to the internet to restore a snapshot. OJ did not queue this lifecycle change.');
+  await approvedUser();
+  const { data, error } = await supabase!.rpc('restore_research_snapshot', { p_snapshot_id: snapshotId });
+  if (error) throw new Error(snapshotLifecycleError(error));
+  return data;
 }

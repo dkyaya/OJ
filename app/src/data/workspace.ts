@@ -1,9 +1,10 @@
 import { supabase } from '../lib/supabase';
-import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, CatalystDateCertainty, CatalystEventStatus, CatalystScheduleKind, IdeaStatus, JournalRecord, Opportunity, Position, ResearchSnapshot, ResearchSource, ResearchStage, SnapshotType, SourceQuality, TradeIdea, TradeIdeaCatalystLink, Workspace } from '../types/domain';
+import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, CatalystDateCertainty, CatalystEventStatus, CatalystScheduleKind, IdeaStatus, JournalRecord, Opportunity, Position, ResearchSnapshot, ResearchSnapshotLifecycleEvent, ResearchSnapshotRemovalReason, ResearchSource, ResearchStage, SnapshotType, SourceQuality, TradeIdea, TradeIdeaCatalystLink, Workspace } from '../types/domain';
 import { demoWorkspace } from './demo';
 import { emptyCollaboration, loadCollaboration } from './collaboration';
 import { persistedSessionUser } from '../lib/session';
 import { normalizeMobileNavigation } from '../config/navigation';
+import { partitionResearchSnapshots } from '../lib/research-snapshot-lifecycle';
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -14,7 +15,7 @@ const optionalString = (value: unknown) => value === null || value === undefined
 const migrationPending = (error: { code?: string; message?: string } | null) => Boolean(error && (error.code === '42P01' || error.code === 'PGRST205' || /could not find the table/i.test(error.message || '')));
 
 export const emptyWorkspace = (): Workspace => ({
-  authenticated: false, approved: false, demo: false, ideas: [], archivedIdeas: [], catalysts: [], ideaCatalystLinks: [], researchSources: [], researchSnapshots: [], positions: [], journal: [], opportunities: [], ...emptyCollaboration(), pendingReviews: 0, lastLoadedAt: new Date().toISOString(),
+  authenticated: false, approved: false, demo: false, ideas: [], archivedIdeas: [], catalysts: [], ideaCatalystLinks: [], researchSources: [], researchSnapshots: [], removedResearchSnapshots: [], positions: [], journal: [], opportunities: [], ...emptyCollaboration(), pendingReviews: 0, lastLoadedAt: new Date().toISOString(),
 });
 
 const literal = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => allowed.includes(value as T) ? value as T : fallback;
@@ -68,7 +69,7 @@ export async function loadWorkspace(): Promise<Workspace> {
   };
   if (!profileRow?.approved || profile.status !== 'active') return { ...emptyWorkspace(), authenticated: true, profile };
 
-  const [ideasResult, candidatesResult, catalystsResult, mappingsResult, linksResult, sourcesResult, snapshotsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult, collaboration] = await Promise.all([
+  const [ideasResult, candidatesResult, catalystsResult, mappingsResult, linksResult, sourcesResult, snapshotsResult, snapshotLifecycleResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult, collaboration] = await Promise.all([
     supabase.from('trade_ideas').select('*').order('updated_at', { ascending: false }),
     supabase.from('trade_candidates').select('*').order('updated_at', { ascending: false }),
     supabase.from('catalysts').select('*').is('deleted_at', null).order('event_at', { ascending: true }),
@@ -76,6 +77,7 @@ export async function loadWorkspace(): Promise<Workspace> {
     supabase.from('trade_idea_catalysts').select('*').order('created_at', { ascending: true }),
     supabase.from('research_sources').select('*').order('accessed_at', { ascending: false }),
     supabase.from('research_snapshots').select('*').order('observed_at', { ascending: false }),
+    supabase.from('research_snapshot_lifecycle_events').select('*').order('created_at', { ascending: true }),
     supabase.from('trades').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
     supabase.from('trade_checkins').select('*').order('created_at', { ascending: false }),
     supabase.from('journal_reviews').select('*').order('created_at', { ascending: false }),
@@ -84,7 +86,7 @@ export async function loadWorkspace(): Promise<Workspace> {
     loadCollaboration(user.id),
   ]);
   const requiredResults = [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult];
-  const firstError = requiredResults.find((result) => result.error)?.error || [linksResult, sourcesResult, snapshotsResult].find((result) => result.error && !migrationPending(result.error))?.error;
+  const firstError = requiredResults.find((result) => result.error)?.error || [linksResult, sourcesResult, snapshotsResult, snapshotLifecycleResult].find((result) => result.error && !migrationPending(result.error))?.error;
   if (firstError) throw new Error(firstError.message);
 
   const candidateMap = mapCandidates((candidatesResult.data || []) as Record<string, unknown>[]);
@@ -135,7 +137,7 @@ export async function loadWorkspace(): Promise<Workspace> {
     id: String(row.id), catalystId: optionalString(row.catalyst_id), tradeIdeaId: optionalString(row.trade_idea_id), title: text(row.title, 'Untitled source'), publisher: optionalString(row.publisher), url: text(row.url),
     sourceQuality: literal<SourceQuality>(row.source_quality, ['official','primary','secondary','unverified'], 'unverified'), claimSummary: optionalString(row.claim_summary), publishedAt: optionalString(row.published_at), accessedAt: String(row.accessed_at), verifiedAt: optionalString(row.verified_at),
   }));
-  const researchSnapshots: ResearchSnapshot[] = ((snapshotsResult.data || []) as Record<string, unknown>[]).map((row) => ({
+  const allResearchSnapshots: ResearchSnapshot[] = ((snapshotsResult.data || []) as Record<string, unknown>[]).map((row) => ({
     id: String(row.id), catalystId: optionalString(row.catalyst_id), tradeIdeaId: optionalString(row.trade_idea_id), sourceId: optionalString(row.source_id),
     snapshotType: literal<SnapshotType>(row.snapshot_type, ['market_pricing','event_implied_move','expiration_implied_move','entry_window','event_reaction','realized_event_move','macro_context'], 'market_pricing'),
     ticker: optionalString(row.ticker), observedAt: String(row.observed_at), methodology: text(row.methodology, 'Method not recorded'), values: record(row.values),
@@ -143,6 +145,12 @@ export async function loadWorkspace(): Promise<Workspace> {
     sessionLabel: row.session_label ? literal(row.session_label, ['T-5','T-3','T-1','T0','T+1','T+5'] as const, 'T0') : undefined, sourceDate: optionalString(row.source_date),
     calendarDaysToCatalyst: number(row.calendar_days_to_catalyst), catalystTimezone: optionalString(row.catalyst_timezone), catalystSession: optionalString(row.catalyst_session),
   }));
+  const snapshotLifecycle: ResearchSnapshotLifecycleEvent[] = ((snapshotLifecycleResult.data || []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id), eventOrder: Number(row.event_order), snapshotId: String(row.snapshot_id), action: literal(row.action, ['remove','restore'] as const, 'remove'),
+    reason: row.reason ? literal<ResearchSnapshotRemovalReason>(row.reason, ['test_snapshot','data_entry_error','wrong_expiration','duplicate','wrong_ticker','bad_source_data','other'], 'other') : undefined,
+    note: optionalString(row.note), createdAt: String(row.created_at),
+  }));
+  const { active: researchSnapshots, removed: removedResearchSnapshots } = partitionResearchSnapshots(allResearchSnapshots, snapshotLifecycle);
   const positions: Position[] = ((tradesResult.data || []) as Record<string, unknown>[]).map((row) => ({
     id: String(row.id), ideaId: String(row.trade_idea_id), ticker: text(row.ticker, 'TBD'), strategy: text(row.strategy, 'TBD'), status: row.status === 'closed' ? 'closed' : 'active',
     contracts: Number(row.contracts), maxRisk: number(row.max_risk), openedAt: String(row.opened_at), closedAt: row.closed_at ? String(row.closed_at) : undefined,
@@ -164,7 +172,7 @@ export async function loadWorkspace(): Promise<Workspace> {
     calendarView: ['week','day'].includes(String(preferenceRow.calendar_view)) ? preferenceRow.calendar_view as 'week' | 'day' : 'month',
     compactCards: Boolean(preferenceRow.compact_cards), mobileNavigation: normalizeMobileNavigation(preferenceData.mobileNavigation), data: preferenceData, revision: Number(preferenceRow.revision || 1),
   } : undefined;
-  return { authenticated: true, approved: true, demo: false, ideas, archivedIdeas, catalysts, ideaCatalystLinks, researchSources, researchSnapshots, positions, journal, opportunities, profile, policy, preferences, ...collaboration, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
+  return { authenticated: true, approved: true, demo: false, ideas, archivedIdeas, catalysts, ideaCatalystLinks, researchSources, researchSnapshots, removedResearchSnapshots, positions, journal, opportunities, profile, policy, preferences, ...collaboration, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
 }
 
 export async function savePreferences(input: Omit<AppPreferences, 'revision'>, currentRevision?: number) {
