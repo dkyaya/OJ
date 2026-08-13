@@ -9,6 +9,7 @@ import { sessionDefinitions } from '../lib/catalyst-intelligence/timeline';
 import type { MarketSnapshot, ProviderStatus, ScenarioInput, TradingSessionLabel, VerticalStrategy } from '../lib/catalyst-intelligence/types';
 import { spreadMetrics } from '../lib/payoff';
 import type { Catalyst, TradeIdea, Workspace } from '../types/domain';
+import { OptionChainSnapshot } from './OptionChainSnapshot';
 
 const localDateTime = () => {
   const now = new Date();
@@ -57,6 +58,7 @@ export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage 
   const candidateEconomics = selected?.strategy && selected.candidate.longStrike !== undefined && selected.candidate.shortStrike !== undefined && selected.candidate.debit !== undefined
     ? spreadMetrics(selected.strategy, selected.candidate.longStrike, selected.candidate.shortStrike, selected.candidate.debit, selected.candidate.contracts || 1) : undefined;
 
+  // Workspace loading centralizes lifecycle filtering, so every analytical view receives active observations only.
   const snapshots = workspace.researchSnapshots.filter((item) => item.catalystId === catalyst.id);
   const currentIv = percent(manual.atmIv);
   const ivHistory = snapshots.map((item) => valueNumber(item.values.implied_volatility)).filter((item): item is number => item !== undefined).map((item) => item > 1 ? item / 100 : item);
@@ -163,8 +165,8 @@ export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage 
 
     <details className="card intelligence-panel"><summary><span><CloudDownload size={17} />Providers &amp; Methodology</span><small>Explicit refresh only</small></summary>
       <div className="provider-grid">{providers.map((provider) => <article key={provider.id}><span className={`quality-dot ${provider.availability}`} /> <b>{provider.label}</b><small>{provider.availability.replaceAll('_', ' ')} · {provider.freshness}</small><p>{provider.detail}</p></article>)}</div>
+      {fetched.snapshots.length > 0 && <div className="provider-chain-preview"><OptionChainSnapshot contracts={fetched.snapshots} cache={fetched.cache} /></div>}
       <div className="panel-actions"><button disabled={busy} onClick={() => void fetchProviders()}><CloudDownload size={16} />Check Provider Status</button><label className="inline-control"><span>Nearby strikes</span><input type="number" min="1" max="10" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} /></label><button disabled={busy || !manual.ticker || !manual.expiration} onClick={() => void fetchOptions()}>Load Delayed Options</button>{fetched.snapshots.length > 0 && <button className="primary" disabled={busy} onClick={() => void saveFetched()}>Save {fetched.snapshots.length} Contracts</button>}</div>
-      {fetched.snapshots.length > 0 && <p className="method-note">{fetched.cache?.hit ? 'Private cache hit' : 'New provider response cached'} · fetched {fetched.cache?.fetchedAt ? new Date(fetched.cache.fetchedAt).toLocaleString() : 'now'} · delayed data cannot be treated as current.</p>}
       <p className="method-note">No polling. MarketData requests require one ticker, one exact expiration, and at most 10 nearby strikes. BLS and Treasury use public official endpoints. SEC requires a request identity; FRED, BEA, Census, and MarketData use optional server secrets. Missing credentials never disable manual entry.</p>
     </details>
   </section>;
