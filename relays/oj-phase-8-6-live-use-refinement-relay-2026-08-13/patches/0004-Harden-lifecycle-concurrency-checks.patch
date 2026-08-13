@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OJ Work Relay <noreply@users.noreply.github.com>
+Date: Thu, 13 Aug 2026 17:36:43 -0400
+Subject: [PATCH 4/4] Harden lifecycle concurrency checks
+
+diff --git a/supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql b/supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql
+index 628a079..0494929 100644
+--- a/supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql
++++ b/supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql
+@@ -259,7 +259,7 @@ declare owner_id uuid := (select auth.uid()); trade public.trades%rowtype; check
+ begin
+   if owner_id is null or not (select private.is_approved_user()) then raise exception 'approved authentication required'; end if;
+   if p_thesis_health not in ('stronger','intact','weaker','invalidated') or p_checked_at is null or p_changes is null or jsonb_typeof(p_changes)<>'object' then raise exception 'invalid check-in'; end if;
+-  select * into trade from public.trades where id=p_trade_id and user_id=owner_id and deleted_at is null;
++  select * into trade from public.trades where id=p_trade_id and user_id=owner_id and deleted_at is null for update;
+   if not found or trade.status<>'active' then raise exception 'active trade not found'; end if;
+   insert into public.trade_checkins(id,trade_idea_id,trade_id,user_id,data,thesis_health,checked_at,current_management_view,revision,sync_status,source)
+   values (checkin_id,trade.trade_idea_id,trade.id,owner_id,p_changes,p_thesis_health,p_checked_at,nullif(btrim(coalesce(p_management_view,'')),''),1,'cloud_draft','oj_app');
+diff --git a/supabase/tests/phase-8-6-research-to-trade-structure.sql b/supabase/tests/phase-8-6-research-to-trade-structure.sql
+index 1d63154..3c026df 100644
+--- a/supabase/tests/phase-8-6-research-to-trade-structure.sql
++++ b/supabase/tests/phase-8-6-research-to-trade-structure.sql
+@@ -10,6 +10,8 @@ begin
+   if to_regprocedure('public.record_trade_entry_v2(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)') is null then raise exception 'Record Trade RPC is missing'; end if;
+   if to_regprocedure('public.record_trade_checkin(uuid,text,timestamp with time zone,jsonb,text)') is null then raise exception 'Trade check-in RPC is missing'; end if;
+   if to_regprocedure('public.record_trade_exit(uuid,timestamp with time zone,numeric,text,numeric,text,text,text,text,boolean)') is null then raise exception 'Trade exit RPC is missing'; end if;
++  if to_regprocedure('private.record_trade_entry_v2_impl(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)') is null then raise exception 'private Trade entry implementation is missing'; end if;
++  if to_regprocedure('private.record_trade_checkin_impl(uuid,text,timestamp with time zone,jsonb,text)') is null then raise exception 'private Trade check-in implementation is missing'; end if;
+   if to_regclass('public.trade_exit_requests') is null then raise exception 'private exit command table is missing'; end if;
+   if not coalesce((select relrowsecurity from pg_class where oid='public.trade_exit_requests'::regclass),false) then raise exception 'exit command RLS is not enabled'; end if;
+   if has_table_privilege('anon','public.trade_exit_requests','insert') or has_table_privilege('anon','public.trades','select') then raise exception 'anonymous lifecycle access is forbidden'; end if;
+@@ -18,6 +20,8 @@ begin
+   if has_table_privilege('authenticated','public.trade_checkins','insert') or has_table_privilege('authenticated','public.trade_checkins','update') or has_table_privilege('authenticated','public.trade_checkins','delete') then raise exception 'historical check-ins must be RPC-only and append-only'; end if;
+   if not has_function_privilege('authenticated','public.record_trade_entry_v2(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)','execute') then raise exception 'approved users need Record Trade access'; end if;
+   if has_function_privilege('anon','public.record_trade_exit(uuid,timestamp with time zone,numeric,text,numeric,text,text,text,text,boolean)','execute') then raise exception 'anonymous users must not record exits'; end if;
++  if exists (select 1 from pg_proc where oid in ('public.record_trade_entry_v2(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)'::regprocedure,'public.record_trade_checkin(uuid,text,timestamp with time zone,jsonb,text)'::regprocedure) and prosecdef) then raise exception 'public lifecycle wrappers must remain security invoker'; end if;
++  if (select count(*) from pg_proc where oid in ('private.record_trade_entry_v2_impl(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)'::regprocedure,'private.record_trade_checkin_impl(uuid,text,timestamp with time zone,jsonb,text)'::regprocedure) and prosecdef and proconfig=array['search_path=""']::text[])<>2 then raise exception 'private lifecycle implementations need locked security-definer scope'; end if;
+   if not exists (select 1 from pg_trigger where tgrelid='public.trades'::regclass and tgname='trade_history_immutable' and not tgisinternal) then raise exception 'Trade entry immutability trigger is missing'; end if;
+   if not exists (select 1 from pg_trigger where tgrelid='public.trade_exit_requests'::regclass and tgname='process_trade_exit_request' and not tgisinternal) then raise exception 'atomic exit processor is missing'; end if;
+ end $$;
+-- 
+2.50.1 (Apple Git-155)
