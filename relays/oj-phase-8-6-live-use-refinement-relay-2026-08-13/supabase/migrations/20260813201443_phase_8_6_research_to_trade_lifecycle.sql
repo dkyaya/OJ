@@ -21,13 +21,22 @@ alter table public.trades
 alter table public.trade_candidates
   add constraint trade_candidates_id_user_id_key unique (id, user_id);
 
+-- Catalysts are shared factual records. Ideas and Trades remain privately owned,
+-- so their provenance reference must not require the Catalyst owner to match.
+alter table public.trade_ideas
+  drop constraint if exists trade_ideas_originating_catalyst_owner_fkey,
+  drop constraint if exists trade_ideas_originating_catalyst_fkey,
+  add constraint trade_ideas_originating_catalyst_fkey foreign key (originating_catalyst_id)
+    references public.catalysts(id) on delete restrict;
+
 alter table public.trades
   drop constraint if exists trades_candidate_owner_fkey,
   add constraint trades_candidate_owner_fkey foreign key (candidate_id, user_id)
     references public.trade_candidates(id, user_id) on delete restrict,
   drop constraint if exists trades_originating_catalyst_owner_fkey,
-  add constraint trades_originating_catalyst_owner_fkey foreign key (originating_catalyst_id, user_id)
-    references public.catalysts(id, user_id) on delete restrict,
+  drop constraint if exists trades_originating_catalyst_fkey,
+  add constraint trades_originating_catalyst_fkey foreign key (originating_catalyst_id)
+    references public.catalysts(id) on delete restrict,
   drop constraint if exists trades_trade_class_check,
   add constraint trades_trade_class_check check (trade_class is null or trade_class in ('pre_catalyst_anticipation','catalyst_hold','post_catalyst_confirmation')),
   drop constraint if exists trades_vertical_check,
@@ -81,11 +90,68 @@ alter table public.journal_reviews
   add constraint journal_reviews_trade_owner_fkey foreign key (trade_id, user_id)
     references public.trades(id, user_id) on delete restrict;
 
+drop index if exists public.trade_ideas_originating_catalyst_owner_idx;
+drop index if exists public.trades_originating_catalyst_owner_idx;
+create index if not exists trade_ideas_originating_catalyst_idx on public.trade_ideas(originating_catalyst_id) where originating_catalyst_id is not null;
 create index if not exists trades_candidate_owner_idx on public.trades(candidate_id, user_id) where candidate_id is not null;
-create index if not exists trades_originating_catalyst_owner_idx on public.trades(originating_catalyst_id, user_id) where originating_catalyst_id is not null;
+create index if not exists trades_originating_catalyst_idx on public.trades(originating_catalyst_id) where originating_catalyst_id is not null;
 create index if not exists trade_checkins_trade_checked_idx on public.trade_checkins(trade_id, checked_at desc) where trade_id is not null;
 create index if not exists trade_exits_trade_exited_idx on public.trade_exits(trade_id, exited_at desc) where trade_id is not null;
 create index if not exists journal_reviews_trade_owner_idx on public.journal_reviews(trade_id, user_id) where trade_id is not null;
+
+create or replace function private.can_access_catalyst(p_catalyst_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p_catalyst_id is not null
+    and (select auth.uid()) is not null
+    and exists (
+      select 1
+      from public.catalysts catalyst
+      where catalyst.id = p_catalyst_id
+        and catalyst.deleted_at is null
+        and (
+          (catalyst.visibility = 'private' and catalyst.user_id = (select auth.uid()))
+          or (
+            catalyst.visibility = 'workspace'
+            and catalyst.workspace_id is not null
+            and (select private.is_workspace_member(catalyst.workspace_id))
+          )
+        )
+    )
+$$;
+revoke all on function private.can_access_catalyst(uuid) from public, anon;
+grant execute on function private.can_access_catalyst(uuid) to authenticated, service_role;
+
+create or replace function private.guard_trade_idea_originating_catalyst()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('service_role','postgres','supabase_admin')
+     or new.originating_catalyst_id is null then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    if new.originating_catalyst_id is not distinct from old.originating_catalyst_id then
+      return new;
+    end if;
+  end if;
+  if not (select private.can_access_catalyst(new.originating_catalyst_id)) then
+    raise exception 'originating catalyst access denied';
+  end if;
+  return new;
+end
+$$;
+revoke all on function private.guard_trade_idea_originating_catalyst() from public, anon, authenticated;
+drop trigger if exists trade_idea_originating_catalyst_access on public.trade_ideas;
+create trigger trade_idea_originating_catalyst_access
+  before insert or update of originating_catalyst_id on public.trade_ideas
+  for each row execute function private.guard_trade_idea_originating_catalyst();
 
 create or replace function public.save_trade_idea_edit(p_trade_idea_id uuid,p_expected_revision integer,p_record jsonb,p_candidate_id uuid,p_candidate jsonb)
 returns public.trade_ideas language plpgsql security invoker set search_path='' as $$
@@ -135,6 +201,7 @@ begin
        or new.max_risk is distinct from old.max_risk
        or new.max_profit is distinct from old.max_profit
        or new.break_even is distinct from old.break_even
+       or new.originating_catalyst_id is distinct from old.originating_catalyst_id
        or new.entry_context is distinct from old.entry_context then
       raise exception 'trade entry history is immutable';
     end if;
@@ -193,6 +260,10 @@ begin
   if not found or idea.deleted_at is not null then raise exception 'eligible trade idea not found'; end if;
   if idea.entry_status <> 'not-entered' or idea.user_confirmed_fill then raise exception 'trade idea is not eligible for entry'; end if;
   if idea.idea_status not in ('watchlist','ready') then raise exception 'trade idea must be watchlist or ready'; end if;
+  if idea.originating_catalyst_id is not null
+     and not (select private.can_access_catalyst(idea.originating_catalyst_id)) then
+    raise exception 'originating catalyst access denied';
+  end if;
 
   if p_candidate_id is not null then
     select * into candidate from public.trade_candidates where id=p_candidate_id and trade_idea_id=idea.id and user_id=owner_id;

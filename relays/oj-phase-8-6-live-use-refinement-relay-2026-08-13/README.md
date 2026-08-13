@@ -12,6 +12,7 @@ Recommended PR title: **Refine OJ’s research-to-trade workflow**
 - Production contained the expected existing lifecycle tables and owner RLS. Aggregate inspection found existing Ideas, Candidates, Trades, entries, and reviews but no Check-Ins or Exits. No private research text was copied into this repository or relay.
 - Production account policy already stores the user’s deliberate `$800` maximum-open-options-risk ceiling. No private policy mutation was performed.
 - Architecture inspected: Ideas/Candidates, Trades and legacy entry processor, Check-Ins/Exits, Journal, Forecasts, Catalyst Intelligence/Research Ledger, Markdown export, RLS, account policy, CI, and GitHub Pages/Supabase workflows.
+- Review addendum inspected the established **Shared facts, separate conclusions** boundary and found that the draft Phase 8.6 owner-bound Trade → Catalyst foreign key conflicted with workspace-visible Catalysts created by another member. The older Idea → Catalyst key had the same prerequisite conflict and is repaired in the same narrow migration.
 
 ## B. Live-use friction audit
 
@@ -47,6 +48,9 @@ Deliberately not built: brokerage connectivity/imports, order routing, automatic
 - Entry is confirmed as an actual fill executed outside OJ. OJ cannot place or alter an order.
 - `entry_context.version = 1` captures the entry-time Idea thesis/plan, Candidate, actual execution, Catalyst cluster and links, up to six pre-entry Research Snapshot IDs, up to three locked Forecast IDs, exposure tags, and risk-policy context.
 - Later Idea edits remain visible as the current linked Idea but cannot rewrite entry context, Candidate provenance, or actual execution.
+- Originating Catalyst references are direct foreign keys to `catalysts.id`, not owner-bound composites. A private Idea/Trade can cite an owner’s private Catalyst or a workspace-visible Catalyst available through active membership, even when another member created it.
+- Catalyst authorization is checked when the Idea reference is assigned and repeated inside protected Record Trade. The check reuses `private.is_workspace_member`; it does not invent a second workspace-membership model.
+- Later workspace removal blocks future Catalyst access but cannot delete or mutate the already-recorded private Trade, fill, Check-Ins, Debrief, direct Catalyst ID, or immutable entry context.
 
 ## E. Risk framework
 
@@ -79,13 +83,14 @@ Apply exactly one new migration after the existing Phase 8.5.1 migration:
 
 `supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql`
 
-It is additive and leaves legacy Trade rows valid through nullable typed fields. It adds typed lifecycle columns, owner-bound Candidate/Catalyst/Journal foreign keys, indexes, constraints, a versioned context, Trade classification, structured Check-In/Exit fields, an insert-only exit command, and lifecycle functions/triggers.
+It is additive and leaves legacy Trade rows valid through nullable typed fields. It adds typed lifecycle columns, owner-bound Candidate/Journal foreign keys, direct Idea/Trade → Catalyst ID foreign keys, indexes, constraints, a versioned context, Trade classification, structured Check-In/Exit fields, an insert-only exit command, and lifecycle functions/triggers.
 
 RPC/API surface:
 
 - `public.record_trade_entry_v2(...)`
 - `public.record_trade_checkin(...)`
 - `public.record_trade_exit(...)`
+- `private.can_access_catalyst(uuid)` for private-owner or active-workspace-member access
 - private entry and Check-In implementations plus private Trade-history/Exit triggers
 
 Rollback must be a reviewed follow-up migration. Do not rename or delete an applied migration. A rollback should first restore the previous app release, then restore required grants/functions before removing new constraints or columns. Dropping context/Exit data is destructive and is not recommended.
@@ -96,8 +101,9 @@ Rollback must be a reviewed follow-up migration. Do not rename or delete an appl
 - Anonymous roles receive no lifecycle access.
 - Authenticated browsers can read owner rows through RLS but cannot directly insert/update/delete Trade, entry, Check-In, or Exit history.
 - Private implementations verify `auth.uid()`, approved-account state, ownership, eligible Idea state, Candidate ownership, structure, confirmation, and policy acknowledgement.
+- The protected entry implementation verifies originating Catalyst access at entry time. `private.can_access_catalyst` delegates workspace authorization to the existing locked `private.is_workspace_member` helper.
 - Exit commands have owner insert RLS and an owner-bound composite Trade foreign key. The private trigger validates the active Trade before writing immutable Exit history.
-- Synthetic two-user SQL proves User B cannot see or mutate User A’s Trade or Check-In and User A can complete the lifecycle inside a rolled-back transaction.
+- Rolled-back synthetic three-user SQL proves User A can create a shared Catalyst, active member User B can use it for a B-owned private Idea/Trade, non-member User C cannot read or record against it, neither A nor C can read B’s private fill/Check-Ins/Debrief, and later removal of B does not mutate B’s historical provenance.
 - No brokerage or Robinhood credentials were accessed or introduced.
 
 ## J. UI and UX
@@ -117,17 +123,17 @@ Latest successful application gate:
 - `npm run build` — pass; 1,679 modules transformed
 - `npm run copy:check` — pass
 - `npm run privacy:check` — pass
-- `git diff --check` — pass
+- `git diff --check` — pass for source and relay material, excluding mail-format patch bodies; the five-patch series separately applies cleanly and reproduces the source tree
 - `npm audit fix` updated transitive `nanoid` from 3.3.17 to patched 3.3.18 and returned **0 vulnerabilities**. A later repeat could not reach the npm audit endpoint due environment DNS; the patched installed and locked version was verified locally.
 
 Build warning: the main JavaScript chunk is about 737 kB minified / 199 kB gzip and exceeds Vite’s 500 kB advisory threshold. This pre-existing performance warning is not a functional failure and should be handled through future route-level code splitting rather than mixed into lifecycle work.
 
-SQL checks authored:
+SQL checks updated:
 
 - `supabase/tests/phase-8-6-research-to-trade-structure.sql`
 - `supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql`
 
-They were statically reviewed but not executed locally: no Supabase CLI/Postgres runtime was installed, registry access was unavailable, and the production project has no development branch. Do not run synthetic acceptance SQL against production. The deploy workflow and post-deploy trusted SQL session remain required.
+They were statically reviewed but not executed locally: no Supabase CLI/Postgres runtime was installed, registry access was unavailable, and the production project has no development branch. The production migration ledger was rechecked and correctly remains at Phase 8.5.1. Do not run synthetic acceptance SQL against production. The deploy workflow and post-deploy trusted SQL session remain required.
 
 ## L. Deployment
 
@@ -136,7 +142,7 @@ They were statically reviewed but not executed locally: no Supabase CLI/Postgres
 3. Review the migration and synthetic SQL before merge.
 4. Merge only with user approval.
 5. Run the manual Supabase deploy workflow. It must apply `20260813201443_phase_8_6_research_to_trade_lifecycle` after all earlier migrations.
-6. Run the two Phase 8.6 SQL checks through a trusted non-production test branch/session. If no branch is available, run only the structural test after deployment and execute the rolled-back two-user test in a deliberately provisioned safe test environment.
+6. Run both Phase 8.6 SQL checks through a trusted non-production test branch/session. If no branch is available, run only the structural test after deployment and execute the rolled-back synthetic three-user test in a deliberately provisioned safe test environment. The retained `two-user-rls.sql` filename is stable; its scenario now covers A/B/C.
 7. Confirm Supabase advisors and migration ledger.
 8. Let Pages deploy the matching frontend only after the database migration succeeds; otherwise new actions show a clear database-update message.
 9. No production policy update is needed: the current stored ceiling is already `$800`.
@@ -159,6 +165,9 @@ They were statically reviewed but not executed locally: no Supabase CLI/Postgres
 - [ ] Repeat Record Trade, Trade detail, Check-In, Exit, and Debrief review at 1024×768, 768×1024, 430×932, 390×844, 375×667, and 320×568.
 - [ ] At every size, confirm no horizontal page scroll, no clipped actions, readable labels, 44px touch targets, and usable mobile navigation.
 - [ ] Confirm User B cannot see User A’s Trade, fill, risk, entry context, Check-Ins, Exit, or Debrief.
+- [ ] Create a synthetic workspace-visible Catalyst as User A; as active member User B, create a private Idea from it and record a B-owned private Trade.
+- [ ] Confirm User A cannot read User B’s Trade, fill, Check-Ins, or Debrief, and non-member User C cannot read or record against the Catalyst.
+- [ ] Remove User B from the workspace; confirm future shared-Catalyst access disappears while B’s private Trade and captured originating Catalyst ID remain intact and closable.
 - [ ] Do not validate with real open Trades unless the user deliberately chooses to do so.
 
 ## N. Git
@@ -169,8 +178,9 @@ Local commits:
 - `c8d9254` — Protect immutable trade lifecycle history
 - `f84c467` — Document Phase 8.6 lifecycle semantics
 - `8e00c55` — Harden lifecycle concurrency checks
+- `a2257e5` — Preserve shared Catalyst Trade provenance
 
-Diff from starting main: 32 files, 1,229 insertions, 69 deletions before adding this relay package.
+Source diff from starting main: 32 files, 1,438 insertions, 69 deletions before adding this relay package.
 
 Remote publishing is the only incomplete Git step. The GitHub CLI reports an invalid `dkyaya` token, the terminal cannot currently resolve `github.com`, and the connected GitHub integration can read the repository but cannot create Git trees. No remote branch or PR was fabricated. After CLI authentication/network is restored:
 
@@ -184,7 +194,7 @@ Recommendation: keep the PR draft until CI, migration review, trusted SQL execut
 ## O. Blockers and uncertainties
 
 - Remote branch/PR creation is blocked by GitHub CLI authentication plus terminal DNS. The local branch is committed and ready.
-- The new migration and synthetic SQL were not executed against Postgres in this run because no local/test database was available. Production was intentionally not used as a test environment.
+- The new migration and synthetic three-user SQL were not executed against Postgres in this run because no local/test database or Supabase development branch was available. Production was intentionally not used as a test environment.
 - The changed frontend could not be rendered locally because the sandbox forbids port binding and direct file navigation. No rendered-QA claim is made.
 - Phase 8.6 supports full exits only. Existing legacy Trades remain readable but cannot retroactively acquire a complete entry-context snapshot without an explicit future correction/migration design.
 - Route-level code splitting remains a bounded performance follow-up.

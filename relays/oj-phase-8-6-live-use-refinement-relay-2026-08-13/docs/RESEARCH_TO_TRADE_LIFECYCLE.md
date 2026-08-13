@@ -18,6 +18,8 @@ The confirmed entry creates a compact `entry_context` version 1 snapshot. It con
 
 Entry structure and provenance are immutable. Later Idea edits remain visible as the current linked Idea but cannot rewrite what was believed at entry. Trades, entry rows, Check-Ins, and Exits are browser-readable but written only through validated lifecycle functions. Historical Check-Ins are append-only.
 
+Catalysts follow the workspace rule **Shared facts, separate conclusions**. A private Idea or Trade may cite either a private Catalyst owned by that user or a workspace-visible Catalyst available through active membership, even when another member created the Catalyst. OJ validates that access when the Catalyst is assigned and again when a Trade is recorded. The Trade remains privately owned. Its direct Catalyst reference and captured entry context remain historical provenance if the member later leaves or is removed; removal blocks future workspace access without rewriting prior private Trade history.
+
 ## Trade classes and monitoring
 
 The user explicitly selects one class:

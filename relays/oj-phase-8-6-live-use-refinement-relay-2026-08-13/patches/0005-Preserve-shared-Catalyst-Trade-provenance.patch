@@ -1,0 +1,409 @@
+From a2257e57c26dca61defa75c7c6a605b238c6f2ef Mon Sep 17 00:00:00 2001
+From: OJ Work Relay <noreply@users.noreply.github.com>
+Date: Thu, 13 Aug 2026 18:39:19 -0400
+Subject: [PATCH] Preserve shared Catalyst Trade provenance
+
+---
+ docs/RESEARCH_TO_TRADE_LIFECYCLE.md           |   2 +
+ docs/SUPABASE_ARCHITECTURE.md                 |   4 +-
+ ..._phase_8_6_research_to_trade_lifecycle.sql |  77 ++++++++-
+ .../phase-8-6-research-to-trade-structure.sql |  30 ++++
+ ...ase-8-6-research-to-trade-two-user-rls.sql | 152 +++++++++++++++---
+ 5 files changed, 237 insertions(+), 28 deletions(-)
+
+diff --git a/docs/RESEARCH_TO_TRADE_LIFECYCLE.md b/docs/RESEARCH_TO_TRADE_LIFECYCLE.md
+index c24a30d..dadf6e9 100644
+--- a/docs/RESEARCH_TO_TRADE_LIFECYCLE.md
++++ b/docs/RESEARCH_TO_TRADE_LIFECYCLE.md
+@@ -18,6 +18,8 @@ The confirmed entry creates a compact `entry_context` version 1 snapshot. It con
+ 
+ Entry structure and provenance are immutable. Later Idea edits remain visible as the current linked Idea but cannot rewrite what was believed at entry. Trades, entry rows, Check-Ins, and Exits are browser-readable but written only through validated lifecycle functions. Historical Check-Ins are append-only.
+ 
++Catalysts follow the workspace rule **Shared facts, separate conclusions**. A private Idea or Trade may cite either a private Catalyst owned by that user or a workspace-visible Catalyst available through active membership, even when another member created the Catalyst. OJ validates that access when the Catalyst is assigned and again when a Trade is recorded. The Trade remains privately owned. Its direct Catalyst reference and captured entry context remain historical provenance if the member later leaves or is removed; removal blocks future workspace access without rewriting prior private Trade history.
++
+ ## Trade classes and monitoring
+ 
+ The user explicitly selects one class:
+diff --git a/docs/SUPABASE_ARCHITECTURE.md b/docs/SUPABASE_ARCHITECTURE.md
+index 1e690a0..a02aef2 100644
+--- a/docs/SUPABASE_ARCHITECTURE.md
++++ b/docs/SUPABASE_ARCHITECTURE.md
+@@ -53,4 +53,6 @@ Review checks are `supabase/tests/phase-8-5-1-snapshot-lifecycle-structure.sql`
+ 
+ Browser roles retain owner-scoped reads but cannot directly insert, update, or delete Trade, entry, Check-In, or Exit history. Public `security invoker` functions expose the narrow authenticated API. Locked-search-path private implementations perform ownership, approval, lifecycle, payoff, confirmation, and risk-acknowledgement checks before writing. Exit recording uses an insert-only RLS command row and private trigger so Exit creation and Trade closure remain atomic. Entry provenance columns are guarded from later mutation.
+ 
+-The migration does not seed or rewrite private account preferences. Production inspection confirmed the owner policy already stores an $800 maximum-open-options-risk ceiling. Structural and rolled-back two-user checks are `supabase/tests/phase-8-6-research-to-trade-structure.sql` and `supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql`. Product semantics are documented in `RESEARCH_TO_TRADE_LIFECYCLE.md`.
++Idea and Trade Catalyst provenance uses a direct foreign key to `catalysts.id`, not an owner-bound composite key. The locked `private.can_access_catalyst` helper reuses `private.is_workspace_member`: a Catalyst is assignable when it is private and owned by the authenticated user, or workspace-visible with active membership in its unarchived workspace. The protected Record Trade implementation repeats that authorization at entry time. The direct `ON DELETE RESTRICT` relationship and immutable Trade context preserve recorded provenance after later membership removal while RLS and the helper remove future workspace access.
++
++The migration does not seed or rewrite private account preferences. Production inspection confirmed the owner policy already stores an $800 maximum-open-options-risk ceiling. Structural and rolled-back synthetic three-user checks are `supabase/tests/phase-8-6-research-to-trade-structure.sql` and `supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql` (the retained filename is stable even though the scenario now covers Users A, B, and C). Product semantics are documented in `RESEARCH_TO_TRADE_LIFECYCLE.md`.
+diff --git a/supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql b/supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql
+index 0494929..3552a8a 100644
+--- a/supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql
++++ b/supabase/migrations/20260813201443_phase_8_6_research_to_trade_lifecycle.sql
+@@ -21,13 +21,22 @@ alter table public.trades
+ alter table public.trade_candidates
+   add constraint trade_candidates_id_user_id_key unique (id, user_id);
+ 
++-- Catalysts are shared factual records. Ideas and Trades remain privately owned,
++-- so their provenance reference must not require the Catalyst owner to match.
++alter table public.trade_ideas
++  drop constraint if exists trade_ideas_originating_catalyst_owner_fkey,
++  drop constraint if exists trade_ideas_originating_catalyst_fkey,
++  add constraint trade_ideas_originating_catalyst_fkey foreign key (originating_catalyst_id)
++    references public.catalysts(id) on delete restrict;
++
+ alter table public.trades
+   drop constraint if exists trades_candidate_owner_fkey,
+   add constraint trades_candidate_owner_fkey foreign key (candidate_id, user_id)
+     references public.trade_candidates(id, user_id) on delete restrict,
+   drop constraint if exists trades_originating_catalyst_owner_fkey,
+-  add constraint trades_originating_catalyst_owner_fkey foreign key (originating_catalyst_id, user_id)
+-    references public.catalysts(id, user_id) on delete restrict,
++  drop constraint if exists trades_originating_catalyst_fkey,
++  add constraint trades_originating_catalyst_fkey foreign key (originating_catalyst_id)
++    references public.catalysts(id) on delete restrict,
+   drop constraint if exists trades_trade_class_check,
+   add constraint trades_trade_class_check check (trade_class is null or trade_class in ('pre_catalyst_anticipation','catalyst_hold','post_catalyst_confirmation')),
+   drop constraint if exists trades_vertical_check,
+@@ -81,12 +90,69 @@ alter table public.journal_reviews
+   add constraint journal_reviews_trade_owner_fkey foreign key (trade_id, user_id)
+     references public.trades(id, user_id) on delete restrict;
+ 
++drop index if exists public.trade_ideas_originating_catalyst_owner_idx;
++drop index if exists public.trades_originating_catalyst_owner_idx;
++create index if not exists trade_ideas_originating_catalyst_idx on public.trade_ideas(originating_catalyst_id) where originating_catalyst_id is not null;
+ create index if not exists trades_candidate_owner_idx on public.trades(candidate_id, user_id) where candidate_id is not null;
+-create index if not exists trades_originating_catalyst_owner_idx on public.trades(originating_catalyst_id, user_id) where originating_catalyst_id is not null;
++create index if not exists trades_originating_catalyst_idx on public.trades(originating_catalyst_id) where originating_catalyst_id is not null;
+ create index if not exists trade_checkins_trade_checked_idx on public.trade_checkins(trade_id, checked_at desc) where trade_id is not null;
+ create index if not exists trade_exits_trade_exited_idx on public.trade_exits(trade_id, exited_at desc) where trade_id is not null;
+ create index if not exists journal_reviews_trade_owner_idx on public.journal_reviews(trade_id, user_id) where trade_id is not null;
+ 
++create or replace function private.can_access_catalyst(p_catalyst_id uuid)
++returns boolean
++language sql
++stable
++security definer
++set search_path = ''
++as $$
++  select p_catalyst_id is not null
++    and (select auth.uid()) is not null
++    and exists (
++      select 1
++      from public.catalysts catalyst
++      where catalyst.id = p_catalyst_id
++        and catalyst.deleted_at is null
++        and (
++          (catalyst.visibility = 'private' and catalyst.user_id = (select auth.uid()))
++          or (
++            catalyst.visibility = 'workspace'
++            and catalyst.workspace_id is not null
++            and (select private.is_workspace_member(catalyst.workspace_id))
++          )
++        )
++    )
++$$;
++revoke all on function private.can_access_catalyst(uuid) from public, anon;
++grant execute on function private.can_access_catalyst(uuid) to authenticated, service_role;
++
++create or replace function private.guard_trade_idea_originating_catalyst()
++returns trigger
++language plpgsql
++set search_path = ''
++as $$
++begin
++  if current_user in ('service_role','postgres','supabase_admin')
++     or new.originating_catalyst_id is null then
++    return new;
++  end if;
++  if tg_op = 'UPDATE' then
++    if new.originating_catalyst_id is not distinct from old.originating_catalyst_id then
++      return new;
++    end if;
++  end if;
++  if not (select private.can_access_catalyst(new.originating_catalyst_id)) then
++    raise exception 'originating catalyst access denied';
++  end if;
++  return new;
++end
++$$;
++revoke all on function private.guard_trade_idea_originating_catalyst() from public, anon, authenticated;
++drop trigger if exists trade_idea_originating_catalyst_access on public.trade_ideas;
++create trigger trade_idea_originating_catalyst_access
++  before insert or update of originating_catalyst_id on public.trade_ideas
++  for each row execute function private.guard_trade_idea_originating_catalyst();
++
+ create or replace function public.save_trade_idea_edit(p_trade_idea_id uuid,p_expected_revision integer,p_record jsonb,p_candidate_id uuid,p_candidate jsonb)
+ returns public.trade_ideas language plpgsql security invoker set search_path='' as $$
+ declare owner_id uuid := (select auth.uid()); idea public.trade_ideas; saved_idea public.trade_ideas; candidate public.trade_candidates; candidate_data jsonb; candidate_changed boolean := false;
+@@ -135,6 +201,7 @@ begin
+        or new.max_risk is distinct from old.max_risk
+        or new.max_profit is distinct from old.max_profit
+        or new.break_even is distinct from old.break_even
++       or new.originating_catalyst_id is distinct from old.originating_catalyst_id
+        or new.entry_context is distinct from old.entry_context then
+       raise exception 'trade entry history is immutable';
+     end if;
+@@ -193,6 +260,10 @@ begin
+   if not found or idea.deleted_at is not null then raise exception 'eligible trade idea not found'; end if;
+   if idea.entry_status <> 'not-entered' or idea.user_confirmed_fill then raise exception 'trade idea is not eligible for entry'; end if;
+   if idea.idea_status not in ('watchlist','ready') then raise exception 'trade idea must be watchlist or ready'; end if;
++  if idea.originating_catalyst_id is not null
++     and not (select private.can_access_catalyst(idea.originating_catalyst_id)) then
++    raise exception 'originating catalyst access denied';
++  end if;
+ 
+   if p_candidate_id is not null then
+     select * into candidate from public.trade_candidates where id=p_candidate_id and trade_idea_id=idea.id and user_id=owner_id;
+diff --git a/supabase/tests/phase-8-6-research-to-trade-structure.sql b/supabase/tests/phase-8-6-research-to-trade-structure.sql
+index 3c026df..578fba6 100644
+--- a/supabase/tests/phase-8-6-research-to-trade-structure.sql
++++ b/supabase/tests/phase-8-6-research-to-trade-structure.sql
+@@ -12,6 +12,7 @@ begin
+   if to_regprocedure('public.record_trade_exit(uuid,timestamp with time zone,numeric,text,numeric,text,text,text,text,boolean)') is null then raise exception 'Trade exit RPC is missing'; end if;
+   if to_regprocedure('private.record_trade_entry_v2_impl(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)') is null then raise exception 'private Trade entry implementation is missing'; end if;
+   if to_regprocedure('private.record_trade_checkin_impl(uuid,text,timestamp with time zone,jsonb,text)') is null then raise exception 'private Trade check-in implementation is missing'; end if;
++  if to_regprocedure('private.can_access_catalyst(uuid)') is null then raise exception 'canonical Catalyst access helper is missing'; end if;
+   if to_regclass('public.trade_exit_requests') is null then raise exception 'private exit command table is missing'; end if;
+   if not coalesce((select relrowsecurity from pg_class where oid='public.trade_exit_requests'::regclass),false) then raise exception 'exit command RLS is not enabled'; end if;
+   if has_table_privilege('anon','public.trade_exit_requests','insert') or has_table_privilege('anon','public.trades','select') then raise exception 'anonymous lifecycle access is forbidden'; end if;
+@@ -22,7 +23,36 @@ begin
+   if has_function_privilege('anon','public.record_trade_exit(uuid,timestamp with time zone,numeric,text,numeric,text,text,text,text,boolean)','execute') then raise exception 'anonymous users must not record exits'; end if;
+   if exists (select 1 from pg_proc where oid in ('public.record_trade_entry_v2(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)'::regprocedure,'public.record_trade_checkin(uuid,text,timestamp with time zone,jsonb,text)'::regprocedure) and prosecdef) then raise exception 'public lifecycle wrappers must remain security invoker'; end if;
+   if (select count(*) from pg_proc where oid in ('private.record_trade_entry_v2_impl(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)'::regprocedure,'private.record_trade_checkin_impl(uuid,text,timestamp with time zone,jsonb,text)'::regprocedure) and prosecdef and proconfig=array['search_path=""']::text[])<>2 then raise exception 'private lifecycle implementations need locked security-definer scope'; end if;
++  if not exists (select 1 from pg_proc where oid='private.can_access_catalyst(uuid)'::regprocedure and prosecdef and proconfig=array['search_path=""']::text[]) then raise exception 'Catalyst access helper needs locked security-definer scope'; end if;
++  if position('private.is_workspace_member' in pg_get_functiondef('private.can_access_catalyst(uuid)'::regprocedure))=0 then raise exception 'Catalyst access must reuse canonical workspace membership'; end if;
++  if position('private.can_access_catalyst' in pg_get_functiondef('private.record_trade_entry_v2_impl(uuid,uuid,text,date,numeric,numeric,integer,timestamp with time zone,numeric,numeric,text,boolean,boolean,text)'::regprocedure))=0 then raise exception 'Record Trade must validate Catalyst access at entry'; end if;
++  if not exists (
++    select 1 from pg_constraint constraint_record
++    where constraint_record.conrelid='public.trades'::regclass
++      and constraint_record.confrelid='public.catalysts'::regclass
++      and constraint_record.contype='f'
++      and array_length(constraint_record.conkey,1)=1
++      and constraint_record.conkey[1]=(select attnum from pg_attribute where attrelid='public.trades'::regclass and attname='originating_catalyst_id')
++  ) then raise exception 'Trade Catalyst provenance must use a direct Catalyst ID foreign key'; end if;
++  if not exists (
++    select 1 from pg_constraint constraint_record
++    where constraint_record.conrelid='public.trade_ideas'::regclass
++      and constraint_record.confrelid='public.catalysts'::regclass
++      and constraint_record.contype='f'
++      and array_length(constraint_record.conkey,1)=1
++      and constraint_record.conkey[1]=(select attnum from pg_attribute where attrelid='public.trade_ideas'::regclass and attname='originating_catalyst_id')
++  ) then raise exception 'Idea Catalyst provenance must use a direct Catalyst ID foreign key'; end if;
++  if exists (
++    select 1 from pg_constraint constraint_record
++    where constraint_record.conrelid in ('public.trades'::regclass,'public.trade_ideas'::regclass)
++      and constraint_record.confrelid='public.catalysts'::regclass
++      and constraint_record.contype='f'
++      and array_length(constraint_record.conkey,1)>1
++      and (select attnum from pg_attribute where attrelid=constraint_record.conrelid and attname='originating_catalyst_id')=any(constraint_record.conkey)
++  ) then raise exception 'Catalyst provenance must not be owner-bound'; end if;
+   if not exists (select 1 from pg_trigger where tgrelid='public.trades'::regclass and tgname='trade_history_immutable' and not tgisinternal) then raise exception 'Trade entry immutability trigger is missing'; end if;
++  if not exists (select 1 from pg_trigger where tgrelid='public.trade_ideas'::regclass and tgname='trade_idea_originating_catalyst_access' and not tgisinternal) then raise exception 'Idea Catalyst assignment guard is missing'; end if;
++  if position('originating_catalyst_id' in pg_get_functiondef('private.guard_trade_history_immutable()'::regprocedure))=0 then raise exception 'Trade Catalyst provenance is not immutable'; end if;
+   if not exists (select 1 from pg_trigger where tgrelid='public.trade_exit_requests'::regclass and tgname='process_trade_exit_request' and not tgisinternal) then raise exception 'atomic exit processor is missing'; end if;
+ end $$;
+ 
+diff --git a/supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql b/supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql
+index 584f734..be1dd9a 100644
+--- a/supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql
++++ b/supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql
+@@ -1,68 +1,172 @@
++-- Rolled-back synthetic three-user lifecycle and shared-Catalyst privacy test.
+ begin;
+ 
+ insert into auth.users(id,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+ values
+   ('61000000-0000-0000-0000-000000000001','trade-a@example.test','',now(),'{"provider":"email","providers":["email"]}','{}',now(),now()),
+-  ('61000000-0000-0000-0000-000000000002','trade-b@example.test','',now(),'{"provider":"email","providers":["email"]}','{}',now(),now());
++  ('61000000-0000-0000-0000-000000000002','trade-b@example.test','',now(),'{"provider":"email","providers":["email"]}','{}',now(),now()),
++  ('61000000-0000-0000-0000-000000000003','trade-c@example.test','',now(),'{"provider":"email","providers":["email"]}','{}',now(),now());
+ 
+-update public.profiles set approved=true,account_status='active' where id in ('61000000-0000-0000-0000-000000000001','61000000-0000-0000-0000-000000000002');
++update public.profiles set approved=true,account_status='active'
++where id in (
++  '61000000-0000-0000-0000-000000000001',
++  '61000000-0000-0000-0000-000000000002',
++  '61000000-0000-0000-0000-000000000003'
++);
+ 
+ insert into public.account_policies(user_id,total_account_capital,maximum_open_options_risk,preferred_defined_risk_strategies,effective_date,policy_version)
+ values
+   ('61000000-0000-0000-0000-000000000001',5000,800,array['bull-call-spread'],'2026-08-13',1),
+-  ('61000000-0000-0000-0000-000000000002',5000,800,array['bull-call-spread'],'2026-08-13',1);
++  ('61000000-0000-0000-0000-000000000002',5000,800,array['bull-call-spread'],'2026-08-13',1),
++  ('61000000-0000-0000-0000-000000000003',5000,800,array['bull-call-spread'],'2026-08-13',1);
+ 
+-insert into public.trade_ideas(id,user_id,ticker,strategy,bias,idea_status,research_stage,entry_status,user_confirmed_fill,data,revision)
++insert into public.workspaces(id,name,created_by)
++values ('64000000-0000-0000-0000-000000000001','Synthetic Shared Facts','61000000-0000-0000-0000-000000000001');
++insert into public.workspace_members(workspace_id,user_id,workspace_role,membership_status)
+ values
+-  ('62000000-0000-0000-0000-000000000001','61000000-0000-0000-0000-000000000001','SYNTH','bull-call-spread','Bullish','ready','entry_candidate','not-entered',false,'{"Thesis":"Original synthetic thesis.","Evidence":"Synthetic evidence.","Invalidation":"Synthetic invalidation.","Planned exit":"Synthetic planned exit."}',1),
+-  ('62000000-0000-0000-0000-000000000002','61000000-0000-0000-0000-000000000002','OTHER','bull-call-spread','Bullish','ready','entry_candidate','not-entered',false,'{"Thesis":"Other user thesis."}',1);
+-
+-insert into public.trade_candidates(id,trade_idea_id,user_id,name,data,revision)
+-values
+-  ('63000000-0000-0000-0000-000000000001','62000000-0000-0000-0000-000000000001','61000000-0000-0000-0000-000000000001','Candidate','{"expiration":"2026-12-18","long_strike":100,"short_strike":105,"debit":2.1,"contracts":1,"max_loss":210,"max_profit":290,"break_even":102.1}',1),
+-  ('63000000-0000-0000-0000-000000000002','62000000-0000-0000-0000-000000000002','61000000-0000-0000-0000-000000000002','Candidate','{"expiration":"2026-12-18","long_strike":100,"short_strike":105,"debit":2.1,"contracts":1}',1);
++  ('64000000-0000-0000-0000-000000000001','61000000-0000-0000-0000-000000000001','owner','active'),
++  ('64000000-0000-0000-0000-000000000001','61000000-0000-0000-0000-000000000002','member','active');
+ 
+ set local role authenticated;
+-select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000001',true);
+ select set_config('request.jwt.claim.role','authenticated',true);
++select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000001',true);
++
++insert into public.catalysts(
++  id,user_id,event,event_type,event_at,data,workspace_id,created_by,updated_by,visibility
++) values (
++  '65000000-0000-0000-0000-000000000001','61000000-0000-0000-0000-000000000001',
++  'Synthetic workspace catalyst','Other','2026-12-01T13:30:00Z','{}',
++  '64000000-0000-0000-0000-000000000001','61000000-0000-0000-0000-000000000001',
++  '61000000-0000-0000-0000-000000000001','workspace'
++);
++
++-- Seed an otherwise valid User C Idea through the trusted test session so the
++-- entry RPC itself is also proven to reject inaccessible shared provenance.
++reset role;
++insert into public.trade_ideas(
++  id,user_id,ticker,strategy,bias,idea_status,research_stage,entry_status,user_confirmed_fill,
++  originating_catalyst_id,data,revision
++) values (
++  '62000000-0000-0000-0000-000000000003','61000000-0000-0000-0000-000000000003',
++  'BLOCKED','bull-call-spread','Bullish','ready','entry_candidate','not-entered',false,
++  '65000000-0000-0000-0000-000000000001','{"Thesis":"Synthetic inaccessible provenance."}',1
++);
++set local role authenticated;
++
++select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000002',true);
+ 
+-select public.record_trade_entry_v2('62000000-0000-0000-0000-000000000001','63000000-0000-0000-0000-000000000001','pre_catalyst_anticipation','2026-12-18',100,105,1,'2026-08-13T14:00:00Z',1.98,0.50,'Synthetic execution.',true,false,null);
++insert into public.trade_ideas(
++  id,user_id,ticker,strategy,bias,idea_status,research_stage,entry_status,user_confirmed_fill,
++  originating_catalyst_id,data,revision
++) values (
++  '62000000-0000-0000-0000-000000000002','61000000-0000-0000-0000-000000000002',
++  'SYNTH','bull-call-spread','Bullish','ready','entry_candidate','not-entered',false,
++  '65000000-0000-0000-0000-000000000001',
++  '{"Thesis":"Original synthetic thesis.","Evidence":"Synthetic evidence.","Invalidation":"Synthetic invalidation.","Planned exit":"Synthetic planned exit."}',1
++);
++insert into public.trade_candidates(id,trade_idea_id,user_id,name,data,revision)
++values (
++  '63000000-0000-0000-0000-000000000002','62000000-0000-0000-0000-000000000002',
++  '61000000-0000-0000-0000-000000000002','Candidate',
++  '{"expiration":"2026-12-18","long_strike":100,"short_strike":105,"debit":2.1,"contracts":1,"max_loss":210,"max_profit":290,"break_even":102.1}',1
++);
++
++select public.record_trade_entry_v2(
++  '62000000-0000-0000-0000-000000000002','63000000-0000-0000-0000-000000000002',
++  'pre_catalyst_anticipation','2026-12-18',100,105,1,'2026-08-13T14:00:00Z',
++  1.98,0.50,'Synthetic execution.',true,false,null
++);
+ 
+ do $$
+ declare trade_id uuid; original_context jsonb;
+ begin
+-  select id,entry_context into trade_id,original_context from public.trades where trade_idea_id='62000000-0000-0000-0000-000000000001';
++  select id,entry_context into trade_id,original_context
++  from public.trades where trade_idea_id='62000000-0000-0000-0000-000000000002';
+   perform set_config('oj_test.trade_id',trade_id::text,true);
++  if not exists (
++    select 1 from public.trades
++    where id=trade_id
++      and user_id='61000000-0000-0000-0000-000000000002'
++      and originating_catalyst_id='65000000-0000-0000-0000-000000000001'
++  ) then raise exception 'User B did not retain private Trade ownership and shared Catalyst provenance'; end if;
++  if original_context->>'originating_catalyst_id'<>'65000000-0000-0000-0000-000000000001' then raise exception 'entry context did not preserve originating Catalyst ID'; end if;
+   if original_context->>'thesis'<>'Original synthetic thesis.' then raise exception 'entry thesis was not captured'; end if;
+   if (original_context#>>'{candidate,planned_debit}')::numeric<>2.1 or (original_context#>>'{actual,debit}')::numeric<>1.98 then raise exception 'planned and actual values were not preserved separately'; end if;
+   perform public.record_trade_checkin(trade_id,'weaker','2026-08-14T14:00:00Z','{"what_changed":"Synthetic change.","price_changed":true,"catalyst_changed":false,"volatility_changed":true,"macro_changed":false,"planned_exit_state":"reassess","invalidation_occurred":false}','Synthetic management revision.');
+-  update public.trade_ideas set data=jsonb_set(data,'{Thesis}','"Later synthetic thesis."'),revision=revision+1 where id='62000000-0000-0000-0000-000000000001';
++  insert into public.journal_reviews(id,trade_idea_id,trade_id,user_id,ratings,data,revision,sync_status)
++  values ('66000000-0000-0000-0000-000000000001','62000000-0000-0000-0000-000000000002',trade_id,'61000000-0000-0000-0000-000000000002','{}','{"reflection":"Private synthetic debrief."}',1,'cloud_draft');
++  update public.trade_ideas set data=jsonb_set(data,'{Thesis}','"Later synthetic thesis."'),revision=revision+1
++  where id='62000000-0000-0000-0000-000000000002';
+   if (select entry_context->>'thesis' from public.trades where id=trade_id)<>'Original synthetic thesis.' then raise exception 'Idea edit rewrote immutable entry thesis'; end if;
+   if (select status from public.trades where id=trade_id)<>'active' then raise exception 'weaker Thesis Health changed Trade state'; end if;
+ end $$;
+ 
+-select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000002',true);
++select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000001',true);
++do $$
++begin
++  if (select count(*) from public.trades)<>0 then raise exception 'User A can read User B private Trade'; end if;
++  if (select count(*) from public.trade_entries)<>0 then raise exception 'User A can read User B fill'; end if;
++  if (select count(*) from public.trade_checkins)<>0 then raise exception 'User A can read User B check-in'; end if;
++  if (select count(*) from public.journal_reviews)<>0 then raise exception 'User A can read User B debrief'; end if;
++end $$;
+ 
++select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000003',true);
+ do $$
+-declare user_a_trade uuid := current_setting('oj_test.trade_id')::uuid;
++declare inaccessible_idea uuid := '62000000-0000-0000-0000-000000000004';
+ begin
+-  if (select count(*) from public.trades)<>0 then raise exception 'User B can read User A Trade'; end if;
+-  if (select count(*) from public.trade_checkins)<>0 then raise exception 'User B can read User A check-in'; end if;
++  if (select count(*) from public.catalysts where id='65000000-0000-0000-0000-000000000001')<>0 then raise exception 'User C can read inaccessible workspace Catalyst'; end if;
+   begin
+-    perform public.record_trade_checkin(user_a_trade,'intact',now(),'{}',null);
+-    raise exception 'User B mutated User A Trade';
++    insert into public.trade_ideas(
++      id,user_id,ticker,strategy,bias,idea_status,research_stage,entry_status,user_confirmed_fill,
++      originating_catalyst_id,data,revision
++    ) values (
++      inaccessible_idea,'61000000-0000-0000-0000-000000000003','BLOCKED','bull-call-spread','Bullish',
++      'ready','entry_candidate','not-entered',false,'65000000-0000-0000-0000-000000000001',
++      '{"Thesis":"Must not be created."}',1
++    );
++    raise exception 'User C created an Idea against an inaccessible workspace Catalyst';
+   exception when others then
+-    if sqlerrm not like '%active trade not found%' then raise; end if;
++    if sqlerrm not like '%originating catalyst access denied%' then raise; end if;
+   end;
++  if exists (select 1 from public.trade_ideas where id=inaccessible_idea) then raise exception 'blocked User C Idea survived'; end if;
++  begin
++    perform public.record_trade_entry_v2(
++      '62000000-0000-0000-0000-000000000003',null,'pre_catalyst_anticipation',
++      '2026-12-18',100,105,1,'2026-08-13T14:00:00Z',1.98,0,
++      'Must not record.',true,false,null
++    );
++    raise exception 'User C recorded a Trade against an inaccessible workspace Catalyst';
++  exception when others then
++    if sqlerrm not like '%originating catalyst access denied%' then raise; end if;
++  end;
++  if exists (select 1 from public.trades where trade_idea_id='62000000-0000-0000-0000-000000000003') then raise exception 'blocked User C Trade survived'; end if;
++  if (select count(*) from public.trades)<>0 or (select count(*) from public.trade_entries)<>0
++     or (select count(*) from public.trade_checkins)<>0 or (select count(*) from public.journal_reviews)<>0 then
++    raise exception 'User C can read User B private lifecycle';
++  end if;
+ end $$;
+ 
+ select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000001',true);
++select public.remove_workspace_member('64000000-0000-0000-0000-000000000001','61000000-0000-0000-0000-000000000002');
+ 
++select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000002',true);
+ do $$
+-declare trade_id uuid := (select id from public.trades where trade_idea_id='62000000-0000-0000-0000-000000000001');
++declare trade_id uuid := current_setting('oj_test.trade_id')::uuid;
+ begin
++  if (select count(*) from public.catalysts where id='65000000-0000-0000-0000-000000000001')<>0 then raise exception 'removed User B retained future workspace Catalyst access'; end if;
++  if not exists (
++    select 1 from public.trades
++    where id=trade_id
++      and user_id='61000000-0000-0000-0000-000000000002'
++      and originating_catalyst_id='65000000-0000-0000-0000-000000000001'
++      and entry_context->>'originating_catalyst_id'='65000000-0000-0000-0000-000000000001'
++  ) then raise exception 'member removal mutated existing private Trade provenance'; end if;
++  if (select count(*) from public.trade_entries where trade_id=trade_id)<>1 then raise exception 'member removal corrupted fill history'; end if;
++  if (select count(*) from public.trade_checkins where trade_id=trade_id)<>1 then raise exception 'member removal corrupted check-in history'; end if;
++  if (select count(*) from public.journal_reviews where trade_id=trade_id)<>1 then raise exception 'member removal corrupted debrief history'; end if;
++  if (select private.can_access_catalyst('65000000-0000-0000-0000-000000000001')) then raise exception 'removed User B retained Catalyst authorization'; end if;
+   perform public.record_trade_exit(trade_id,'2026-08-15T14:00:00Z',2.49,'credit',0.50,'target_reached','intact','before catalyst','Synthetic exit.',true);
+-  if (select status from public.trades where id=trade_id)<>'closed' then raise exception 'Trade did not close'; end if;
++  if (select status from public.trades where id=trade_id)<>'closed' then raise exception 'Trade did not close after membership removal'; end if;
+   if (select realized_pnl from public.trade_exits where trade_id=trade_id)<>50.00 then raise exception 'realized P/L is incorrect'; end if;
+   if (select count(*) from public.trades where status='active')<>0 then raise exception 'closed Trade still contributes to open risk'; end if;
+ end $$;
+-- 
+2.50.1 (Apple Git-155)
