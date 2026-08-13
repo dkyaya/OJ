@@ -10,7 +10,7 @@
 | `npm run build` | Pass; 1,679 modules |
 | `npm run copy:check` | Pass |
 | `npm run privacy:check` | Pass |
-| `git diff --check` | Pass for source/relay material excluding mail-format patch bodies; five-patch `git am` replay also passes |
+| `git diff --check` | Pass for the full branch; mail-format patch bodies use the repository’s `-whitespace` attribute and five-patch `git am` replay also passes |
 | `npm audit fix` / patched lock | Pass; 0 vulnerabilities, `nanoid` 3.3.18 |
 
 ## Warnings and unavailable checks

@@ -123,7 +123,7 @@ Latest successful application gate:
 - `npm run build` — pass; 1,679 modules transformed
 - `npm run copy:check` — pass
 - `npm run privacy:check` — pass
-- `git diff --check` — pass for source and relay material, excluding mail-format patch bodies; the five-patch series separately applies cleanly and reproduces the source tree
+- `git diff --check` — pass for the full branch; repository attributes classify mail-format patch bodies separately, and the five-patch series applies cleanly and reproduces the application/migration/documentation source tree
 - `npm audit fix` updated transitive `nanoid` from 3.3.17 to patched 3.3.18 and returned **0 vulnerabilities**. A later repeat could not reach the npm audit endpoint due environment DNS; the patched installed and locked version was verified locally.
 
 Build warning: the main JavaScript chunk is about 737 kB minified / 199 kB gzip and exceeds Vite’s 500 kB advisory threshold. This pre-existing performance warning is not a functional failure and should be handled through future route-level code splitting rather than mixed into lifecycle work.
