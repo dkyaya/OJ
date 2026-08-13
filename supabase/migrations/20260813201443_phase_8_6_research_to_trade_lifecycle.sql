@@ -259,7 +259,7 @@ declare owner_id uuid := (select auth.uid()); trade public.trades%rowtype; check
 begin
   if owner_id is null or not (select private.is_approved_user()) then raise exception 'approved authentication required'; end if;
   if p_thesis_health not in ('stronger','intact','weaker','invalidated') or p_checked_at is null or p_changes is null or jsonb_typeof(p_changes)<>'object' then raise exception 'invalid check-in'; end if;
-  select * into trade from public.trades where id=p_trade_id and user_id=owner_id and deleted_at is null;
+  select * into trade from public.trades where id=p_trade_id and user_id=owner_id and deleted_at is null for update;
   if not found or trade.status<>'active' then raise exception 'active trade not found'; end if;
   insert into public.trade_checkins(id,trade_idea_id,trade_id,user_id,data,thesis_health,checked_at,current_management_view,revision,sync_status,source)
   values (checkin_id,trade.trade_idea_id,trade.id,owner_id,p_changes,p_thesis_health,p_checked_at,nullif(btrim(coalesce(p_management_view,'')),''),1,'cloud_draft','oj_app');
