@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { demoWorkspace } from '../data/demo';
-import { filterCatalysts } from './catalyst-filter';
+import { filterCatalysts, filterSelectableCatalysts } from './catalyst-filter';
 
 describe('filterCatalysts', () => {
   it('combines horizon, certainty, ticker, and cluster filters', () => {
@@ -11,5 +11,16 @@ describe('filterCatalysts', () => {
   it('keeps contextual risk out of dated horizons', () => {
     const contextual = { ...demoWorkspace.catalysts[0], id: 'context', date: undefined, scheduleKind: 'contextual' as const, dateCertainty: 'contextual' as const };
     expect(filterCatalysts([contextual], { horizon: 30, category: 'all', certainty: 'all', ticker: '', cluster: '' }, '2026-08-10')).toEqual([]);
+  });
+
+  it('offers only current and future dated catalysts to the Idea editor', () => {
+    const catalysts = [
+      { id: 'past', date: '2026-08-09' },
+      { id: 'today', date: '2026-08-10' },
+      { id: 'future', date: '2026-08-11' },
+      { id: 'undated' },
+    ];
+
+    expect(filterSelectableCatalysts(catalysts, '2026-08-10').map((item) => item.id)).toEqual(['today', 'future']);
   });
 });
