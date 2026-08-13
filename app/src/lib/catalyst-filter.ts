@@ -30,3 +30,8 @@ export function filterCatalysts(catalysts: Catalyst[], filters: CatalystFilters,
     return true;
   });
 }
+
+export function filterSelectableCatalysts<T extends { date?: string }>(catalysts: T[], today: string) {
+  const start = dayNumber(today);
+  return catalysts.filter((item) => Boolean(item.date) && dayNumber(item.date!) >= start);
+}
