@@ -46,3 +46,11 @@ Each event receives a monotonic identity order. The active state is the latest e
 The frontend partitions all loaded snapshots once into active and removed collections. Every current intelligence/history/calibration consumer uses the active collection; the removed collection is recovery and audit metadata only. Provider cache rows are service-only infrastructure and are not deleted or changed by Research Ledger removal.
 
 Review checks are `supabase/tests/phase-8-5-1-snapshot-lifecycle-structure.sql` and `supabase/tests/phase-8-5-1-snapshot-lifecycle-two-user-rls.sql`. The latter uses rolled-back synthetic users to prove original-row immutability, same-owner remove/restore, and cross-user invisibility and rejection.
+
+## Research-to-Trade lifecycle
+
+`20260813201443_phase_8_6_research_to_trade_lifecycle.sql` extends the existing private Idea/Candidate/Trade model without creating a parallel order model. It adds typed actual vertical fields, explicit Trade classification, a compact versioned entry-context snapshot, structured append-only Check-Ins, typed full Exits, and a Trade link for Journal reviews.
+
+Browser roles retain owner-scoped reads but cannot directly insert, update, or delete Trade, entry, Check-In, or Exit history. Public `security invoker` functions expose the narrow authenticated API. Locked-search-path private implementations perform ownership, approval, lifecycle, payoff, confirmation, and risk-acknowledgement checks before writing. Exit recording uses an insert-only RLS command row and private trigger so Exit creation and Trade closure remain atomic. Entry provenance columns are guarded from later mutation.
+
+The migration does not seed or rewrite private account preferences. Production inspection confirmed the owner policy already stores an $800 maximum-open-options-risk ceiling. Structural and rolled-back two-user checks are `supabase/tests/phase-8-6-research-to-trade-structure.sql` and `supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql`. Product semantics are documented in `RESEARCH_TO_TRADE_LIFECYCLE.md`.

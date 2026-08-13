@@ -9,3 +9,5 @@ Permanently deleting an idea from OJ removes its eligible canonical Supabase rec
 Because the browser creates the archive locally, private text is not placed in the public repository or a public build artifact.
 
 Authentication, account activation, ordinary saves, and application startup never depend on Obsidian, the private repository, Codex, GitHub credentials, or filesystem access.
+
+Trade files preserve the Phase 8.6 decision story: planned Candidate values, actual execution, original entry thesis and policy context, Catalyst and research references, Check-Ins, and Exit. Linked Journal files include user-authored outcome and reflection fields. These records remain private user exports and must not be committed to the public application repository.
