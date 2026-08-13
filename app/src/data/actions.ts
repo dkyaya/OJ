@@ -177,16 +177,21 @@ export async function saveResearchSource(input: {
 
 export async function saveResearchSnapshot(input: {
   catalystId?: string; tradeIdeaId?: string; snapshotType: SnapshotType; ticker?: string; observedAt: string;
-  methodology: string; values: Record<string, string>;
+  methodology: string; values: Record<string, unknown>; provider?: string; sourceQuality?: SourceQuality; freshness?: 'current' | 'delayed' | 'historical' | 'manual'; fetchedAt?: string; sourceReference?: string;
+  sessionLabel?: 'T-5' | 'T-3' | 'T-1' | 'T0' | 'T+1' | 'T+5'; sourceDate?: string; calendarDaysToCatalyst?: number; catalystTimezone?: string; catalystSession?: string;
 }) {
   const user = await approvedUser();
   if (!input.catalystId && !input.tradeIdeaId) throw new Error('Choose a catalyst or Idea for this snapshot.');
   if (!input.methodology.trim() || !input.observedAt) throw new Error('Record the observation time and methodology.');
-  const values = Object.fromEntries(Object.entries(input.values).map(([key, value]) => [key, value.trim()]).filter(([, value]) => value));
+  const values = Object.fromEntries(Object.entries(input.values).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+  if (new TextEncoder().encode(JSON.stringify(values)).byteLength > 100_000) throw new Error('Snapshot detail is too large. Save a focused observation.');
   const { data, error } = await supabase!.from('research_snapshots').insert({
     user_id: user.id, catalyst_id: input.catalystId || null, trade_idea_id: input.tradeIdeaId || null,
     snapshot_type: input.snapshotType, ticker: input.ticker?.trim().toUpperCase() || null,
     observed_at: new Date(input.observedAt).toISOString(), methodology: input.methodology.trim(), values,
+    provider: input.provider?.trim().toLowerCase() || 'manual', source_quality: input.sourceQuality || 'unverified', freshness: input.freshness || 'manual', fetched_at: input.fetchedAt ? new Date(input.fetchedAt).toISOString() : new Date().toISOString(), source_reference: input.sourceReference?.trim() || null,
+    session_label: input.sessionLabel || null, source_date: input.sourceDate || null, calendar_days_to_catalyst: input.calendarDaysToCatalyst ?? null,
+    catalyst_timezone: input.catalystTimezone?.trim() || null, catalyst_session: input.catalystSession || null,
   }).select().single();
   if (error) throw new Error(/research_snapshots|schema cache|could not find the table/i.test(error.message) ? 'OJ is finishing its catalyst-research database update. Try again after the Supabase workflow completes.' : error.message); return data;
 }

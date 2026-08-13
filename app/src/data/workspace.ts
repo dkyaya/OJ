@@ -139,6 +139,9 @@ export async function loadWorkspace(): Promise<Workspace> {
     id: String(row.id), catalystId: optionalString(row.catalyst_id), tradeIdeaId: optionalString(row.trade_idea_id), sourceId: optionalString(row.source_id),
     snapshotType: literal<SnapshotType>(row.snapshot_type, ['market_pricing','event_implied_move','expiration_implied_move','entry_window','event_reaction','realized_event_move','macro_context'], 'market_pricing'),
     ticker: optionalString(row.ticker), observedAt: String(row.observed_at), methodology: text(row.methodology, 'Method not recorded'), values: record(row.values),
+    provider: text(row.provider, 'manual'), sourceQuality: literal<SourceQuality>(row.source_quality, ['official','primary','secondary','unverified'], 'unverified'), freshness: literal(row.freshness, ['current','delayed','historical','manual'] as const, 'manual'), fetchedAt: String(row.fetched_at || row.created_at || row.observed_at), sourceReference: optionalString(row.source_reference),
+    sessionLabel: row.session_label ? literal(row.session_label, ['T-5','T-3','T-1','T0','T+1','T+5'] as const, 'T0') : undefined, sourceDate: optionalString(row.source_date),
+    calendarDaysToCatalyst: number(row.calendar_days_to_catalyst), catalystTimezone: optionalString(row.catalyst_timezone), catalystSession: optionalString(row.catalyst_session),
   }));
   const positions: Position[] = ((tradesResult.data || []) as Record<string, unknown>[]).map((row) => ({
     id: String(row.id), ideaId: String(row.trade_idea_id), ticker: text(row.ticker, 'TBD'), strategy: text(row.strategy, 'TBD'), status: row.status === 'closed' ? 'closed' : 'active',

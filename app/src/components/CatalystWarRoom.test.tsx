@@ -9,6 +9,7 @@ describe('Catalyst War Room', () => {
     const markup = renderToStaticMarkup(<CatalystWarRoom catalyst={catalyst} workspace={demoWorkspace} onBack={() => undefined} onSaved={() => undefined} />);
 
     expect(markup).toContain('Catalyst War Room');
+    expect(markup).toContain('Intelligence');
     expect(markup).toContain('href="https://www.bls.gov/schedule/"');
     expect(markup).not.toContain('[Release calendar]');
   });
