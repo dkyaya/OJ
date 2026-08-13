@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Cloud, Save, X } from 'lucide-react';
 import { canonicalFingerprint, ideaToFormData, IDEA_SECTIONS, initialIdeaData, validateIdeaData, visibleFields } from '../features/ideas/canonical';
+import { dateKey } from '../lib/calendar';
+import { filterSelectableCatalysts } from '../lib/catalyst-filter';
 import { spreadMetrics, type Spread } from '../lib/payoff';
 import { syncDraft } from '../storage/cloud';
 import { clearDraft, listDrafts, saveDraft, type Draft } from '../storage/drafts';
@@ -148,6 +150,7 @@ export function Workflow({ open, onClose, onSaved, ownerId, initialMode = 'ticke
   };
   const current = IDEA_SECTIONS[step];
   const fields = visibleFields(data, step);
+  const selectableCatalysts = filterSelectableCatalysts(catalysts, dateKey(new Date()));
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
     <section className="workflow-sheet" role="dialog" aria-modal="true" aria-labelledby="idea-dialog-title" ref={dialog}>
@@ -156,7 +159,7 @@ export function Workflow({ open, onClose, onSaved, ownerId, initialMode = 'ticke
       <nav className="step-nav" aria-label="Idea steps">{IDEA_SECTIONS.map((section, index) => <button key={section.title} className={index === step ? 'active' : ''} onClick={() => setStep(index)}><span>{index + 1}</span>{section.title}</button>)}</nav>
       <div className="workflow-body"><div className="section-intro"><h3>{current.title}</h3><p>{current.subtitle}</p></div><div className="form-grid">
         {fields.map((field) => <label key={field.name}><span>{field.label}{field.required && <em>Required</em>}</span>
-          {field.name === 'Existing catalyst ID' ? <select value={data[field.name] || ''} onChange={(event) => update(field.name, event.target.value)}><option value="">Choose a scheduled catalyst</option>{catalysts.map((item) => <option key={item.id} value={item.id}>{item.date || 'TBD'} · {item.event}</option>)}</select>
+          {field.name === 'Existing catalyst ID' ? <select value={data[field.name] || ''} onChange={(event) => update(field.name, event.target.value)}><option value="">Choose a scheduled catalyst</option>{selectableCatalysts.map((item) => <option key={item.id} value={item.id}>{item.date} · {item.event}</option>)}</select>
             : field.options ? <select value={data[field.name] || field.options[0]} onChange={(event) => update(field.name, event.target.value)}>{field.options.map((option) => <option key={option}>{option}</option>)}</select>
               : field.multiline ? <textarea value={data[field.name] || ''} placeholder={field.placeholder || field.label} onChange={(event) => update(field.name, event.target.value)} />
                 : <input type={field.inputType || 'text'} min={field.inputType === 'number' ? '0' : undefined} step={field.name === 'Contracts' ? '1' : field.inputType === 'number' ? '0.01' : undefined} value={data[field.name] || ''} placeholder={field.placeholder || field.label} onChange={(event) => update(field.name, event.target.value)} />}
