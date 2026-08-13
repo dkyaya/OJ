@@ -172,7 +172,7 @@ They were statically reviewed but not executed locally: no Supabase CLI/Postgres
 
 ## N. Git
 
-Local commits:
+Functional source commits included by the patch series:
 
 - `b44831e` — Refine the research-to-trade lifecycle
 - `c8d9254` — Protect immutable trade lifecycle history
