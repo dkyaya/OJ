@@ -1,0 +1,809 @@
+From a66e0541a0ca8068cac3034e8c5112331bb2c6b2 Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Thu, 13 Aug 2026 09:12:16 -0400
+Subject: [PATCH 2/3] Add research snapshot removal lifecycle
+
+---
+ app/src/components/ResearchLedger.test.tsx    |  42 ++++
+ app/src/components/ResearchLedger.tsx         |  72 ++++++-
+ app/src/data/actions.test.ts                  |  13 +-
+ app/src/data/actions.ts                       |  27 ++-
+ app/src/data/demo.ts                          |   1 +
+ app/src/data/workspace.ts                     |  20 +-
+ .../lib/research-snapshot-lifecycle.test.ts   |  42 ++++
+ app/src/lib/research-snapshot-lifecycle.ts    |  15 ++
+ app/src/styles/visual-polish.css              |   3 +-
+ app/src/types/domain.ts                       |  18 ++
+ ...3030000_phase_8_5_1_snapshot_lifecycle.sql | 186 ++++++++++++++++++
+ ...ase-8-5-1-snapshot-lifecycle-structure.sql |  68 +++++++
+ ...-8-5-1-snapshot-lifecycle-two-user-rls.sql |  72 +++++++
+ 13 files changed, 565 insertions(+), 14 deletions(-)
+ create mode 100644 app/src/components/ResearchLedger.test.tsx
+ create mode 100644 app/src/lib/research-snapshot-lifecycle.test.ts
+ create mode 100644 app/src/lib/research-snapshot-lifecycle.ts
+ create mode 100644 supabase/migrations/20260813030000_phase_8_5_1_snapshot_lifecycle.sql
+ create mode 100644 supabase/tests/phase-8-5-1-snapshot-lifecycle-structure.sql
+ create mode 100644 supabase/tests/phase-8-5-1-snapshot-lifecycle-two-user-rls.sql
+
+diff --git a/app/src/components/ResearchLedger.test.tsx b/app/src/components/ResearchLedger.test.tsx
+new file mode 100644
+index 0000000..29c5198
+--- /dev/null
++++ b/app/src/components/ResearchLedger.test.tsx
+@@ -0,0 +1,42 @@
++import { renderToStaticMarkup } from 'react-dom/server';
++import { describe, expect, it } from 'vitest';
++import { demoWorkspace } from '../data/demo';
++import type { MarketSnapshot } from '../lib/catalyst-intelligence/types';
++import { ResearchLedger } from './ResearchLedger';
++
++const chain: MarketSnapshot[] = (['call', 'put'] as const).map((optionSide) => ({
++  provider: 'fixture-provider', sourceQuality: 'secondary', observedAt: '2026-08-13T13:00:00Z', fetchedAt: '2026-08-13T13:05:00Z', freshness: 'delayed',
++  ticker: 'SYNTH', underlyingPrice: 100, expiration: '2026-09-18', optionSide, strike: 100, bid: 1, ask: 1.4,
++  methodology: 'Synthetic ledger fixture.', provenance: 'provider',
++}));
++
++describe('ResearchLedger snapshot presentation', () => {
++  it('uses the structured option-chain reader and exposes a safe removal action', () => {
++    const providerSnapshot = { ...demoWorkspace.researchSnapshots[0], id: 'provider-fixture', ticker: 'SYNTH', provider: 'fixture-provider', freshness: 'delayed' as const, values: { option_chain: chain } };
++    const markup = renderToStaticMarkup(<ResearchLedger workspace={{ ...demoWorkspace, researchSnapshots: [providerSnapshot] }} catalystId={providerSnapshot.catalystId} onSaved={() => undefined} />);
++    expect(markup).toContain('Paired option chain');
++    expect(markup).toContain('Call Bid');
++    expect(markup).toContain('Remove Snapshot');
++    expect(markup).toContain('Technical Details');
++    expect(markup).not.toContain('Option Chain: [{');
++  });
++
++  it('lists removed snapshots separately with reason and restore control', () => {
++    const original = demoWorkspace.researchSnapshots[0];
++    const markup = renderToStaticMarkup(<ResearchLedger workspace={{ ...demoWorkspace, researchSnapshots: [], removedResearchSnapshots: [{ snapshot: original, removal: { id: 'event', eventOrder: 1, snapshotId: original.id, action: 'remove', reason: 'duplicate', createdAt: '2026-08-13T14:00:00Z' } }] }} catalystId={original.catalystId} onSaved={() => undefined} />);
++    expect(markup).toContain('Removed Snapshots (1)');
++    expect(markup).toContain('Removed for Duplicate');
++    expect(markup).toContain('Restore');
++  });
++
++  it('distinguishes manual and delayed provider observations by timestamp and provenance', () => {
++    const original = demoWorkspace.researchSnapshots[0];
++    const manual = { ...original, id: 'manual-comparison', ticker: 'SYNTH', provider: 'manual', sourceReference: 'Manual screen', values: { expiration: '2026-09-18', event_implied_move_percent: 4.2 } };
++    const provider = { ...original, id: 'provider-comparison', ticker: 'SYNTH', provider: 'fixture-provider', freshness: 'delayed' as const, sourceReference: undefined, values: { option_chain: chain } };
++    const markup = renderToStaticMarkup(<ResearchLedger workspace={{ ...demoWorkspace, researchSnapshots: [manual, provider] }} catalystId={original.catalystId} onSaved={() => undefined} />);
++    expect(markup).toContain('Manual / Provider Comparison');
++    expect(markup).toContain('manual · Manual screen · manual');
++    expect(markup).toContain('fixture-provider · delayed');
++    expect(markup).toContain('Observed');
++  });
++});
+diff --git a/app/src/components/ResearchLedger.tsx b/app/src/components/ResearchLedger.tsx
+index 4d2b71a..ee6d2d4 100644
+--- a/app/src/components/ResearchLedger.tsx
++++ b/app/src/components/ResearchLedger.tsx
+@@ -1,8 +1,10 @@
+ import { useMemo, useState } from 'react';
+-import { BookOpen, Camera, Plus } from 'lucide-react';
+-import { saveResearchSnapshot, saveResearchSource } from '../data/actions';
+-import type { SnapshotType, SourceQuality, Workspace } from '../types/domain';
++import { BookOpen, Camera, MinusCircle, Plus, RotateCcw } from 'lucide-react';
++import { removeResearchSnapshot, restoreResearchSnapshot, saveResearchSnapshot, saveResearchSource } from '../data/actions';
++import type { ResearchSnapshot, ResearchSnapshotRemovalReason, SnapshotType, SourceQuality, Workspace } from '../types/domain';
++import { analyzeOptionChain, parseStoredOptionChain } from '../lib/catalyst-intelligence/option-chain';
+ import { CatalystSourceLink } from './CatalystSourceLink';
++import { OptionChainSnapshot } from './OptionChainSnapshot';
+ 
+ const localDateTime = () => {
+   const now = new Date();
+@@ -11,6 +13,61 @@ const localDateTime = () => {
+ };
+ 
+ const label = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
++const scalarLabels: Record<string, string> = {
++  underlying_price: 'Underlying', expiration: 'Expiration', strategy: 'Strategy', atm_call_midpoint: 'ATM call midpoint', atm_put_midpoint: 'ATM put midpoint',
++  event_implied_move_percent: 'Event-implied move', expiration_implied_move_percent: 'Expiration-implied move', realized_move_percent: 'Realized move',
++  pre_event_drift_percent: 'Pre-event drift', implied_volatility: 'Implied volatility', spread_debit: 'Spread debit', two_year_yield: '2Y yield', ten_year_yield: '10Y yield', fed_probability: 'Fed probability', notes: 'Notes',
++};
++const percentMetrics = new Set(['event_implied_move_percent', 'expiration_implied_move_percent', 'realized_move_percent', 'pre_event_drift_percent']);
++const present = (value: unknown) => value !== undefined && value !== null && value !== '';
++const scalarValue = (key: string, value: unknown) => percentMetrics.has(key) && Number.isFinite(Number(value)) ? `${Number(value).toFixed(2)}%` : String(value);
++const reasonOptions: Array<{ value: ResearchSnapshotRemovalReason; label: string }> = [
++  { value: 'test_snapshot', label: 'Test snapshot' }, { value: 'data_entry_error', label: 'Data-entry error' }, { value: 'wrong_expiration', label: 'Wrong expiration' },
++  { value: 'duplicate', label: 'Duplicate' }, { value: 'wrong_ticker', label: 'Wrong ticker' }, { value: 'bad_source_data', label: 'Bad source data' }, { value: 'other', label: 'Other' },
++];
++
++const snapshotExpiration = (item: ResearchSnapshot) => typeof item.values.expiration === 'string' ? item.values.expiration : analyzeOptionChain(parseStoredOptionChain(item.values.option_chain))?.expiration;
++const snapshotMove = (item: ResearchSnapshot) => {
++  const direct = Number(item.values.event_implied_move_percent);
++  if (Number.isFinite(direct)) return direct;
++  return analyzeOptionChain(parseStoredOptionChain(item.values.option_chain))?.atmSummary?.percentMove;
++};
++
++function SnapshotComparison({ snapshots }: { snapshots: ResearchSnapshot[] }) {
++  const comparisons = useMemo(() => {
++    const groups = new Map<string, ResearchSnapshot[]>();
++    for (const item of snapshots) {
++      const expiration = snapshotExpiration(item);
++      if (!item.ticker || !expiration) continue;
++      const key = `${item.ticker}:${expiration}`;
++      groups.set(key, [...(groups.get(key) || []), item]);
++    }
++    return [...groups.entries()].flatMap(([key, items]) => {
++      const manual = items.find((item) => item.provider === 'manual' || item.freshness === 'manual');
++      const provider = items.find((item) => item.provider !== 'manual' && item.freshness !== 'manual');
++      return manual && provider ? [{ key, manual, provider }] : [];
++    });
++  }, [snapshots]);
++  if (!comparisons.length) return null;
++  return <section className="snapshot-comparisons" aria-label="Manual and provider snapshot comparison"><h4>Manual / Provider Comparison</h4>{comparisons.map(({ key, manual, provider }) => <article key={key}>
++    <header><b>{key.replace(':', ' · ')}</b><span>Same ticker and expiration</span></header>
++    {[manual, provider].map((item) => <div key={item.id}><span>{item.provider}{item.sourceReference ? ` · ${item.sourceReference}` : ''} · {item.freshness}</span><strong>{snapshotMove(item) === undefined ? 'Move unavailable' : `${snapshotMove(item)!.toFixed(2)}% implied move`}</strong><small>Observed {new Date(item.observedAt).toLocaleString()}</small></div>)}
++    <p>Compare provenance and timestamps before treating differences as signal.</p>
++  </article>)}</section>;
++}
++
++function SnapshotCard({ item, onRemove }: { item: ResearchSnapshot; onRemove: (item: ResearchSnapshot) => void }) {
++  const chain = parseStoredOptionChain(item.values.option_chain);
++  const metrics = Object.entries(item.values).filter(([key, value]) => key in scalarLabels && present(value) && ['string', 'number', 'boolean'].includes(typeof value));
++  return <article className="research-snapshot-card">
++    <header><div><b>{item.sessionLabel ? `${item.sessionLabel} · ` : ''}{label(item.snapshotType)}</b><span>{new Date(item.observedAt).toLocaleString()} · {item.ticker || 'Cross-asset'}</span></div><span className={`freshness-badge ${item.freshness}`}>{item.freshness}</span></header>
++    <div className="snapshot-provenance"><span>{item.provider}</span><span>{item.sourceQuality}</span><span>Fetched {new Date(item.fetchedAt).toLocaleString()}</span></div>
++    <p>{item.methodology}</p>
++    {metrics.length > 0 && <dl className="snapshot-metrics">{metrics.map(([key, value]) => <div key={key}><dt>{scalarLabels[key]}</dt><dd>{scalarValue(key, value)}</dd></div>)}</dl>}
++    {chain.length > 0 ? <OptionChainSnapshot contracts={chain} technicalValues={item.values} /> : <details className="technical-details"><summary>Technical Details</summary><pre>{JSON.stringify(item.values, null, 2)}</pre></details>}
++    <footer><button className="subtle-danger" onClick={() => onRemove(item)}><MinusCircle size={14} />Remove Snapshot</button></footer>
++  </article>;
++}
+ 
+ export function ResearchLedger({ workspace, catalystId, tradeIdeaId, ticker, onSaved }: {
+   workspace: Workspace; catalystId?: string; tradeIdeaId?: string; ticker?: string; onSaved: () => void | Promise<void>;
+@@ -19,16 +76,23 @@ export function ResearchLedger({ workspace, catalystId, tradeIdeaId, ticker, onS
+   const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
+   const [source, setSource] = useState({ title: '', publisher: '', url: '', sourceQuality: 'official' as SourceQuality, claimSummary: '', verified: true });
+   const [snapshot, setSnapshot] = useState({ snapshotType: 'market_pricing' as SnapshotType, observedAt: localDateTime(), methodology: '', underlying: '', eventMove: '', expirationMove: '', realizedMove: '', preEventDrift: '', iv: '', debit: '', twoYear: '', tenYear: '', fedProbability: '', notes: '' });
++  const [removal, setRemoval] = useState<{ item: ResearchSnapshot; reason: ResearchSnapshotRemovalReason; note: string }>();
+   const sources = useMemo(() => workspace.researchSources.filter((item) => (catalystId && item.catalystId === catalystId) || (tradeIdeaId && item.tradeIdeaId === tradeIdeaId)), [catalystId, tradeIdeaId, workspace.researchSources]);
+   const snapshots = useMemo(() => workspace.researchSnapshots.filter((item) => (catalystId && item.catalystId === catalystId) || (tradeIdeaId && item.tradeIdeaId === tradeIdeaId)), [catalystId, tradeIdeaId, workspace.researchSnapshots]);
++  const removed = useMemo(() => workspace.removedResearchSnapshots.filter(({ snapshot: item }) => (catalystId && item.catalystId === catalystId) || (tradeIdeaId && item.tradeIdeaId === tradeIdeaId)), [catalystId, tradeIdeaId, workspace.removedResearchSnapshots]);
+   const addSource = async () => { setBusy(true); setMessage(''); try { await saveResearchSource({ catalystId, tradeIdeaId, ...source }); setSource({ title: '', publisher: '', url: '', sourceQuality: 'official', claimSummary: '', verified: true }); setMode(''); await onSaved(); setMessage('Source recorded.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Source could not be saved.'); } finally { setBusy(false); } };
+   const addSnapshot = async () => { setBusy(true); setMessage(''); try { await saveResearchSnapshot({ catalystId, tradeIdeaId, ticker, snapshotType: snapshot.snapshotType, observedAt: snapshot.observedAt, methodology: snapshot.methodology, values: { underlying_price: snapshot.underlying, event_implied_move_percent: snapshot.eventMove, expiration_implied_move_percent: snapshot.expirationMove, realized_move_percent: snapshot.realizedMove, pre_event_drift_percent: snapshot.preEventDrift, implied_volatility: snapshot.iv, spread_debit: snapshot.debit, two_year_yield: snapshot.twoYear, ten_year_yield: snapshot.tenYear, fed_probability: snapshot.fedProbability, notes: snapshot.notes } }); setSnapshot({ snapshotType: 'market_pricing', observedAt: localDateTime(), methodology: '', underlying: '', eventMove: '', expirationMove: '', realizedMove: '', preEventDrift: '', iv: '', debit: '', twoYear: '', tenYear: '', fedProbability: '', notes: '' }); setMode(''); await onSaved(); setMessage('Append-only snapshot recorded.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Snapshot could not be saved.'); } finally { setBusy(false); } };
++  const confirmRemoval = async () => { if (!removal) return; setBusy(true); setMessage(''); try { await removeResearchSnapshot({ snapshotId: removal.item.id, reason: removal.reason, note: removal.note }); setRemoval(undefined); await onSaved(); setMessage('Snapshot removed from active research. Its original audit record was preserved.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Snapshot could not be removed.'); } finally { setBusy(false); } };
++  const restore = async (snapshotId: string) => { setBusy(true); setMessage(''); try { await restoreResearchSnapshot(snapshotId); await onSaved(); setMessage('Snapshot restored to active research.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Snapshot could not be restored.'); } finally { setBusy(false); } };
+ 
+   return <section className="card research-ledger" aria-labelledby={`research-ledger-${catalystId || tradeIdeaId}`}>
+     <header className="section-heading"><div><span className="eyebrow">Private audit trail</span><h2 id={`research-ledger-${catalystId || tradeIdeaId}`}>My Research Ledger</h2><p>Personal sources and timestamped observations remain separate from shared facts and conclusions.</p></div><div className="action-row"><button onClick={() => setMode(mode === 'source' ? '' : 'source')}><BookOpen size={15} />Add Source</button><button onClick={() => setMode(mode === 'snapshot' ? '' : 'snapshot')}><Camera size={15} />Add Snapshot</button></div></header>
+     {message && <p className="page-message" role="status">{message}</p>}
+     {mode === 'source' && <div className="inline-form ledger-form"><div className="form-grid"><label><span>Title</span><input value={source.title} onChange={(event) => setSource({ ...source, title: event.target.value })} /></label><label><span>Publisher</span><input value={source.publisher} onChange={(event) => setSource({ ...source, publisher: event.target.value })} /></label><label className="wide"><span>URL</span><input type="url" value={source.url} onChange={(event) => setSource({ ...source, url: event.target.value })} /></label><label><span>Quality</span><select value={source.sourceQuality} onChange={(event) => setSource({ ...source, sourceQuality: event.target.value as SourceQuality })}>{['official','primary','secondary','unverified'].map((item) => <option key={item} value={item}>{label(item)}</option>)}</select></label><label><span>Verification</span><select value={source.verified ? 'verified' : 'unverified'} onChange={(event) => setSource({ ...source, verified: event.target.value === 'verified' })}><option value="verified">Verified now</option><option value="unverified">Needs verification</option></select></label><label className="wide"><span>Claim supported</span><textarea value={source.claimSummary} onChange={(event) => setSource({ ...source, claimSummary: event.target.value })} /></label></div><footer><button onClick={() => setMode('')}>Cancel</button><button className="primary" disabled={busy || !source.title.trim() || !source.url.trim()} onClick={() => void addSource()}><Plus size={15} />{busy ? 'Saving' : 'Save Source'}</button></footer></div>}
+     {mode === 'snapshot' && <div className="inline-form ledger-form"><div className="form-grid"><label><span>Snapshot type</span><select value={snapshot.snapshotType} onChange={(event) => setSnapshot({ ...snapshot, snapshotType: event.target.value as SnapshotType })}>{['market_pricing','event_implied_move','expiration_implied_move','entry_window','event_reaction','realized_event_move','macro_context'].map((item) => <option key={item} value={item}>{label(item)}</option>)}</select></label><label><span>Observed at</span><input type="datetime-local" value={snapshot.observedAt} onChange={(event) => setSnapshot({ ...snapshot, observedAt: event.target.value })} /></label><label><span>Underlying price</span><input inputMode="decimal" value={snapshot.underlying} onChange={(event) => setSnapshot({ ...snapshot, underlying: event.target.value })} /></label><label><span>IV</span><input value={snapshot.iv} onChange={(event) => setSnapshot({ ...snapshot, iv: event.target.value })} /></label><label><span>Event-implied move (%)</span><input inputMode="decimal" value={snapshot.eventMove} onChange={(event) => setSnapshot({ ...snapshot, eventMove: event.target.value })} /></label><label><span>Expiration-implied move (%)</span><input inputMode="decimal" value={snapshot.expirationMove} onChange={(event) => setSnapshot({ ...snapshot, expirationMove: event.target.value })} /></label><label><span>Realized move (%)</span><input inputMode="decimal" value={snapshot.realizedMove} onChange={(event) => setSnapshot({ ...snapshot, realizedMove: event.target.value })} /></label><label><span>Pre-event drift (%)</span><input inputMode="decimal" value={snapshot.preEventDrift} onChange={(event) => setSnapshot({ ...snapshot, preEventDrift: event.target.value })} /></label><label><span>Spread debit</span><input inputMode="decimal" value={snapshot.debit} onChange={(event) => setSnapshot({ ...snapshot, debit: event.target.value })} /></label><label><span>2Y / 10Y yield</span><div className="paired-input"><input aria-label="Two-year yield" value={snapshot.twoYear} onChange={(event) => setSnapshot({ ...snapshot, twoYear: event.target.value })} /><input aria-label="Ten-year yield" value={snapshot.tenYear} onChange={(event) => setSnapshot({ ...snapshot, tenYear: event.target.value })} /></div></label><label><span>Fed probability</span><input value={snapshot.fedProbability} onChange={(event) => setSnapshot({ ...snapshot, fedProbability: event.target.value })} /></label><label className="wide"><span>Methodology</span><textarea value={snapshot.methodology} placeholder="Inputs, horizon, expiration, and calculation method" onChange={(event) => setSnapshot({ ...snapshot, methodology: event.target.value })} /></label><label className="wide"><span>Notes</span><textarea value={snapshot.notes} onChange={(event) => setSnapshot({ ...snapshot, notes: event.target.value })} /></label></div><footer><button onClick={() => setMode('')}>Cancel</button><button className="primary" disabled={busy || !snapshot.observedAt || !snapshot.methodology.trim()} onClick={() => void addSnapshot()}><Plus size={15} />{busy ? 'Saving' : 'Append Snapshot'}</button></footer></div>}
+-    <div className="ledger-grid"><div><h3>Sources</h3>{sources.length ? <div className="ledger-list">{sources.slice(0, 8).map((item) => <article key={item.id}><CatalystSourceLink source={`[${item.title}](${item.url})`} /><span>{item.publisher || label(item.sourceQuality)} · accessed {new Date(item.accessedAt).toLocaleString()}</span>{item.claimSummary && <p>{item.claimSummary}</p>}</article>)}</div> : <p className="muted-copy">No provenance records yet.</p>}</div><div><h3>Snapshots</h3>{snapshots.length ? <div className="ledger-list">{snapshots.slice(0, 8).map((item) => <article key={item.id}><b>{item.sessionLabel ? `${item.sessionLabel} · ` : ''}{label(item.snapshotType)}</b><span>{new Date(item.observedAt).toLocaleString()} · {item.ticker || 'Cross-asset'} · {item.provider} · {item.freshness} · {item.sourceQuality}</span><p>{item.methodology}</p><small>{Object.entries(item.values).map(([key, value]) => `${label(key)}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`).join(' · ')}</small></article>)}</div> : <p className="muted-copy">No pricing snapshots yet.</p>}</div></div>
++    {removal && <div className="snapshot-removal-form" role="group" aria-label="Remove research snapshot"><h3>Remove this snapshot from active research?</h3><p>Remove this snapshot from active research and analytics? The original observation will remain recoverable and immutable.</p><label><span>Reason</span><select value={removal.reason} onChange={(event) => setRemoval({ ...removal, reason: event.target.value as ResearchSnapshotRemovalReason })}>{reasonOptions.map((reason) => <option key={reason.value} value={reason.value}>{reason.label}</option>)}</select></label><label><span>Note (optional)</span><textarea maxLength={500} value={removal.note} onChange={(event) => setRemoval({ ...removal, note: event.target.value })} /></label><footer><button onClick={() => setRemoval(undefined)}>Cancel</button><button className="subtle-danger" disabled={busy} onClick={() => void confirmRemoval()}>Remove from Active Research</button></footer></div>}
++    <div className="ledger-grid"><div><h3>Sources</h3>{sources.length ? <div className="ledger-list">{sources.slice(0, 8).map((item) => <article key={item.id}><CatalystSourceLink source={`[${item.title}](${item.url})`} /><span>{item.publisher || label(item.sourceQuality)} · accessed {new Date(item.accessedAt).toLocaleString()}</span>{item.claimSummary && <p>{item.claimSummary}</p>}</article>)}</div> : <p className="muted-copy">No provenance records yet.</p>}</div><div><h3>Snapshots</h3>{snapshots.length ? <div className="research-snapshot-list">{snapshots.slice(0, 8).map((item) => <SnapshotCard key={item.id} item={item} onRemove={(selected) => setRemoval({ item: selected, reason: 'test_snapshot', note: '' })} />)}</div> : <p className="muted-copy">No active pricing snapshots yet.</p>}</div></div>
++    <SnapshotComparison snapshots={snapshots} />
++    {removed.length > 0 && <details className="removed-snapshots"><summary>Removed Snapshots ({removed.length})</summary><p>Excluded from active research and analytics. Original observations remain unchanged.</p><div>{removed.map(({ snapshot: item, removal: event }) => <article key={item.id}><div><b>{item.ticker || 'Cross-asset'} · {label(item.snapshotType)}</b><span>Removed for {label(event.reason || 'other')} · {new Date(event.createdAt).toLocaleString()}</span>{event.note && <small>{event.note}</small>}</div><button disabled={busy} onClick={() => void restore(item.id)}><RotateCcw size={14} />Restore</button></article>)}</div></details>}
+   </section>;
+ }
+diff --git a/app/src/data/actions.test.ts b/app/src/data/actions.test.ts
+index 0b998b0..1caaf01 100644
+--- a/app/src/data/actions.test.ts
++++ b/app/src/data/actions.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest';
+-import { ideaDeletionError, ideaLifecycleError } from './actions';
++import { ideaDeletionError, ideaLifecycleError, snapshotLifecycleError } from './actions';
+ 
+ describe('idea lifecycle error copy', () => {
+   it('maps revision conflicts without exposing database details', () => {
+@@ -32,3 +32,14 @@ describe('idea deletion error copy', () => {
+     expect(ideaDeletionError(new Error('private implementation detail'))).toBe('OJ could not delete this idea. Nothing was changed.');
+   });
+ });
++
++describe('snapshot lifecycle error copy', () => {
++  it('maps rollout and validation failures without exposing backend details', () => {
++    expect(snapshotLifecycleError(new Error('Could not find the function public.remove_research_snapshot in the schema cache'))).toContain('finishing its snapshot-lifecycle database update');
++    expect(snapshotLifecycleError(new Error('invalid_removal_reason'))).toContain('valid removal reason');
++  });
++
++  it('keeps ownership failures private', () => {
++    expect(snapshotLifecycleError(new Error('snapshot_not_found'))).toBe('OJ could not find a snapshot owned by this account.');
++  });
++});
+diff --git a/app/src/data/actions.ts b/app/src/data/actions.ts
+index 6dd60a7..3169565 100644
+--- a/app/src/data/actions.ts
++++ b/app/src/data/actions.ts
+@@ -1,7 +1,6 @@
+ import { supabase } from '../lib/supabase';
+ import { clearDraft, removeOperation } from '../storage/drafts';
+-import type { AccountPolicy } from '../types/domain';
+-import type { CatalystDateCertainty, CatalystScheduleKind, SnapshotType, SourceQuality } from '../types/domain';
++import type { AccountPolicy, CatalystDateCertainty, CatalystScheduleKind, ResearchSnapshotRemovalReason, SnapshotType, SourceQuality } from '../types/domain';
+ import { zonedEventIso } from '../lib/date-time';
+ 
+ const httpUrl = (value: string) => {
+@@ -195,3 +194,27 @@ export async function saveResearchSnapshot(input: {
+   }).select().single();
+   if (error) throw new Error(/research_snapshots|schema cache|could not find the table/i.test(error.message) ? 'OJ is finishing its catalyst-research database update. Try again after the Supabase workflow completes.' : error.message); return data;
+ }
++
++export const snapshotLifecycleError = (error: unknown) => {
++  const detail = error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error || '');
++  if (/could not find the function|function .* does not exist|schema cache|research_snapshot_lifecycle/i.test(detail)) return 'OJ is finishing its snapshot-lifecycle database update. Try again after the Supabase workflow completes.';
++  if (/snapshot_not_found|row-level security|permission denied|approved_account_required/i.test(detail)) return 'OJ could not find a snapshot owned by this account.';
++  if (/invalid_removal_reason/i.test(detail)) return 'Choose a valid removal reason.';
++  return 'OJ could not update this snapshot. Nothing was changed.';
++};
++
++export async function removeResearchSnapshot(input: { snapshotId: string; reason: ResearchSnapshotRemovalReason; note?: string }) {
++  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Connect to the internet to remove a snapshot. OJ did not queue this lifecycle change.');
++  await approvedUser();
++  const { data, error } = await supabase!.rpc('remove_research_snapshot', { p_snapshot_id: input.snapshotId, p_reason: input.reason, p_note: input.note?.trim() || null });
++  if (error) throw new Error(snapshotLifecycleError(error));
++  return data;
++}
++
++export async function restoreResearchSnapshot(snapshotId: string) {
++  if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Connect to the internet to restore a snapshot. OJ did not queue this lifecycle change.');
++  await approvedUser();
++  const { data, error } = await supabase!.rpc('restore_research_snapshot', { p_snapshot_id: snapshotId });
++  if (error) throw new Error(snapshotLifecycleError(error));
++  return data;
++}
+diff --git a/app/src/data/demo.ts b/app/src/data/demo.ts
+index c130da4..def47ef 100644
+--- a/app/src/data/demo.ts
++++ b/app/src/data/demo.ts
+@@ -34,6 +34,7 @@ export const demoWorkspace: Workspace = {
+   ideaCatalystLinks: [{ id: '21000000-0000-4000-8000-000000000001', tradeIdeaId: '10000000-0000-4000-8000-000000000001', catalystId: '20000000-0000-4000-8000-000000000001', relationship: 'primary' }],
+   researchSources: [{ id: '22000000-0000-4000-8000-000000000001', catalystId: '20000000-0000-4000-8000-000000000001', title: 'Synthetic schedule source', publisher: 'Example Publisher', url: 'https://example.invalid/schedule', sourceQuality: 'official', claimSummary: 'Synthetic provenance used for interface testing.', accessedAt: '2026-08-10T14:00:00Z', verifiedAt: '2026-08-10T14:00:00Z' }],
+   researchSnapshots: [{ id: '23000000-0000-4000-8000-000000000001', tradeIdeaId: '10000000-0000-4000-8000-000000000001', catalystId: '20000000-0000-4000-8000-000000000001', snapshotType: 'event_implied_move', ticker: 'DEMO', observedAt: '2026-08-10T15:00:00Z', fetchedAt: '2026-08-10T15:00:00Z', methodology: 'Synthetic ATM straddle midpoint divided by the synthetic underlying price.', values: { event_implied_move_percent: 1.4, expiration_implied_move_percent: 2.1, note: 'Synthetic values only' }, provider: 'manual', sourceQuality: 'unverified', freshness: 'manual', sessionLabel: 'T-3', sourceReference: 'Synthetic demo observation' }],
++  removedResearchSnapshots: [],
+   evidence: [
+     { id: '71000000-0000-4000-8000-000000000001', workspaceId: '80000000-0000-4000-8000-000000000001', catalystId: '20000000-0000-4000-8000-000000000001', missionId: '72000000-0000-4000-8000-000000000001', authorId: '90000000-0000-4000-8000-000000000001', evidenceType: 'supports_bear', title: 'Hiring trend cooled', summary: 'Synthetic evidence used to validate the shared-research layout.', sourceLabel: 'Synthetic source', confidence: 60, verificationStatus: 'verified', lastVerifiedAt: '2026-08-10T14:00:00Z', createdAt: '2026-08-10T14:00:00Z', updatedAt: '2026-08-10T14:00:00Z' },
+   ],
+diff --git a/app/src/data/workspace.ts b/app/src/data/workspace.ts
+index 82b85f3..ea56ab5 100644
+--- a/app/src/data/workspace.ts
++++ b/app/src/data/workspace.ts
+@@ -1,9 +1,10 @@
+ import { supabase } from '../lib/supabase';
+-import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, CatalystDateCertainty, CatalystEventStatus, CatalystScheduleKind, IdeaStatus, JournalRecord, Opportunity, Position, ResearchSnapshot, ResearchSource, ResearchStage, SnapshotType, SourceQuality, TradeIdea, TradeIdeaCatalystLink, Workspace } from '../types/domain';
++import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, CatalystDateCertainty, CatalystEventStatus, CatalystScheduleKind, IdeaStatus, JournalRecord, Opportunity, Position, ResearchSnapshot, ResearchSnapshotLifecycleEvent, ResearchSnapshotRemovalReason, ResearchSource, ResearchStage, SnapshotType, SourceQuality, TradeIdea, TradeIdeaCatalystLink, Workspace } from '../types/domain';
+ import { demoWorkspace } from './demo';
+ import { emptyCollaboration, loadCollaboration } from './collaboration';
+ import { persistedSessionUser } from '../lib/session';
+ import { normalizeMobileNavigation } from '../config/navigation';
++import { partitionResearchSnapshots } from '../lib/research-snapshot-lifecycle';
+ 
+ const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+ const text = (value: unknown, fallback = '') => typeof value === 'string' && value.trim() ? value.trim() : fallback;
+@@ -14,7 +15,7 @@ const optionalString = (value: unknown) => value === null || value === undefined
+ const migrationPending = (error: { code?: string; message?: string } | null) => Boolean(error && (error.code === '42P01' || error.code === 'PGRST205' || /could not find the table/i.test(error.message || '')));
+ 
+ export const emptyWorkspace = (): Workspace => ({
+-  authenticated: false, approved: false, demo: false, ideas: [], archivedIdeas: [], catalysts: [], ideaCatalystLinks: [], researchSources: [], researchSnapshots: [], positions: [], journal: [], opportunities: [], ...emptyCollaboration(), pendingReviews: 0, lastLoadedAt: new Date().toISOString(),
++  authenticated: false, approved: false, demo: false, ideas: [], archivedIdeas: [], catalysts: [], ideaCatalystLinks: [], researchSources: [], researchSnapshots: [], removedResearchSnapshots: [], positions: [], journal: [], opportunities: [], ...emptyCollaboration(), pendingReviews: 0, lastLoadedAt: new Date().toISOString(),
+ });
+ 
+ const literal = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => allowed.includes(value as T) ? value as T : fallback;
+@@ -68,7 +69,7 @@ export async function loadWorkspace(): Promise<Workspace> {
+   };
+   if (!profileRow?.approved || profile.status !== 'active') return { ...emptyWorkspace(), authenticated: true, profile };
+ 
+-  const [ideasResult, candidatesResult, catalystsResult, mappingsResult, linksResult, sourcesResult, snapshotsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult, collaboration] = await Promise.all([
++  const [ideasResult, candidatesResult, catalystsResult, mappingsResult, linksResult, sourcesResult, snapshotsResult, snapshotLifecycleResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult, collaboration] = await Promise.all([
+     supabase.from('trade_ideas').select('*').order('updated_at', { ascending: false }),
+     supabase.from('trade_candidates').select('*').order('updated_at', { ascending: false }),
+     supabase.from('catalysts').select('*').is('deleted_at', null).order('event_at', { ascending: true }),
+@@ -76,6 +77,7 @@ export async function loadWorkspace(): Promise<Workspace> {
+     supabase.from('trade_idea_catalysts').select('*').order('created_at', { ascending: true }),
+     supabase.from('research_sources').select('*').order('accessed_at', { ascending: false }),
+     supabase.from('research_snapshots').select('*').order('observed_at', { ascending: false }),
++    supabase.from('research_snapshot_lifecycle_events').select('*').order('created_at', { ascending: true }),
+     supabase.from('trades').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
+     supabase.from('trade_checkins').select('*').order('created_at', { ascending: false }),
+     supabase.from('journal_reviews').select('*').order('created_at', { ascending: false }),
+@@ -84,7 +86,7 @@ export async function loadWorkspace(): Promise<Workspace> {
+     loadCollaboration(user.id),
+   ]);
+   const requiredResults = [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult];
+-  const firstError = requiredResults.find((result) => result.error)?.error || [linksResult, sourcesResult, snapshotsResult].find((result) => result.error && !migrationPending(result.error))?.error;
++  const firstError = requiredResults.find((result) => result.error)?.error || [linksResult, sourcesResult, snapshotsResult, snapshotLifecycleResult].find((result) => result.error && !migrationPending(result.error))?.error;
+   if (firstError) throw new Error(firstError.message);
+ 
+   const candidateMap = mapCandidates((candidatesResult.data || []) as Record<string, unknown>[]);
+@@ -135,7 +137,7 @@ export async function loadWorkspace(): Promise<Workspace> {
+     id: String(row.id), catalystId: optionalString(row.catalyst_id), tradeIdeaId: optionalString(row.trade_idea_id), title: text(row.title, 'Untitled source'), publisher: optionalString(row.publisher), url: text(row.url),
+     sourceQuality: literal<SourceQuality>(row.source_quality, ['official','primary','secondary','unverified'], 'unverified'), claimSummary: optionalString(row.claim_summary), publishedAt: optionalString(row.published_at), accessedAt: String(row.accessed_at), verifiedAt: optionalString(row.verified_at),
+   }));
+-  const researchSnapshots: ResearchSnapshot[] = ((snapshotsResult.data || []) as Record<string, unknown>[]).map((row) => ({
++  const allResearchSnapshots: ResearchSnapshot[] = ((snapshotsResult.data || []) as Record<string, unknown>[]).map((row) => ({
+     id: String(row.id), catalystId: optionalString(row.catalyst_id), tradeIdeaId: optionalString(row.trade_idea_id), sourceId: optionalString(row.source_id),
+     snapshotType: literal<SnapshotType>(row.snapshot_type, ['market_pricing','event_implied_move','expiration_implied_move','entry_window','event_reaction','realized_event_move','macro_context'], 'market_pricing'),
+     ticker: optionalString(row.ticker), observedAt: String(row.observed_at), methodology: text(row.methodology, 'Method not recorded'), values: record(row.values),
+@@ -143,6 +145,12 @@ export async function loadWorkspace(): Promise<Workspace> {
+     sessionLabel: row.session_label ? literal(row.session_label, ['T-5','T-3','T-1','T0','T+1','T+5'] as const, 'T0') : undefined, sourceDate: optionalString(row.source_date),
+     calendarDaysToCatalyst: number(row.calendar_days_to_catalyst), catalystTimezone: optionalString(row.catalyst_timezone), catalystSession: optionalString(row.catalyst_session),
+   }));
++  const snapshotLifecycle: ResearchSnapshotLifecycleEvent[] = ((snapshotLifecycleResult.data || []) as Record<string, unknown>[]).map((row) => ({
++    id: String(row.id), eventOrder: Number(row.event_order), snapshotId: String(row.snapshot_id), action: literal(row.action, ['remove','restore'] as const, 'remove'),
++    reason: row.reason ? literal<ResearchSnapshotRemovalReason>(row.reason, ['test_snapshot','data_entry_error','wrong_expiration','duplicate','wrong_ticker','bad_source_data','other'], 'other') : undefined,
++    note: optionalString(row.note), createdAt: String(row.created_at),
++  }));
++  const { active: researchSnapshots, removed: removedResearchSnapshots } = partitionResearchSnapshots(allResearchSnapshots, snapshotLifecycle);
+   const positions: Position[] = ((tradesResult.data || []) as Record<string, unknown>[]).map((row) => ({
+     id: String(row.id), ideaId: String(row.trade_idea_id), ticker: text(row.ticker, 'TBD'), strategy: text(row.strategy, 'TBD'), status: row.status === 'closed' ? 'closed' : 'active',
+     contracts: Number(row.contracts), maxRisk: number(row.max_risk), openedAt: String(row.opened_at), closedAt: row.closed_at ? String(row.closed_at) : undefined,
+@@ -164,7 +172,7 @@ export async function loadWorkspace(): Promise<Workspace> {
+     calendarView: ['week','day'].includes(String(preferenceRow.calendar_view)) ? preferenceRow.calendar_view as 'week' | 'day' : 'month',
+     compactCards: Boolean(preferenceRow.compact_cards), mobileNavigation: normalizeMobileNavigation(preferenceData.mobileNavigation), data: preferenceData, revision: Number(preferenceRow.revision || 1),
+   } : undefined;
+-  return { authenticated: true, approved: true, demo: false, ideas, archivedIdeas, catalysts, ideaCatalystLinks, researchSources, researchSnapshots, positions, journal, opportunities, profile, policy, preferences, ...collaboration, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
++  return { authenticated: true, approved: true, demo: false, ideas, archivedIdeas, catalysts, ideaCatalystLinks, researchSources, researchSnapshots, removedResearchSnapshots, positions, journal, opportunities, profile, policy, preferences, ...collaboration, pendingReviews: positions.filter((item) => item.status === 'closed' && !journal.some((entry) => entry.ideaId === item.ideaId && entry.kind === 'review')).length, lastLoadedAt: new Date().toISOString() };
+ }
+ 
+ export async function savePreferences(input: Omit<AppPreferences, 'revision'>, currentRevision?: number) {
+diff --git a/app/src/lib/research-snapshot-lifecycle.test.ts b/app/src/lib/research-snapshot-lifecycle.test.ts
+new file mode 100644
+index 0000000..301e678
+--- /dev/null
++++ b/app/src/lib/research-snapshot-lifecycle.test.ts
+@@ -0,0 +1,42 @@
++import { describe, expect, it } from 'vitest';
++import { calibrationStats, ivContext } from './catalyst-intelligence/analytics';
++import { partitionResearchSnapshots } from './research-snapshot-lifecycle';
++import type { ResearchSnapshot, ResearchSnapshotLifecycleEvent } from '../types/domain';
++
++const snapshot = (id: string, sessionLabel: ResearchSnapshot['sessionLabel'], iv: number): ResearchSnapshot => ({
++  id, catalystId: 'catalyst', snapshotType: 'event_implied_move', ticker: 'SYNTH', observedAt: `2026-08-${id === 'a' ? '10' : id === 'b' ? '11' : '12'}T16:00:00Z`,
++  methodology: 'Synthetic lifecycle test.', values: { implied_volatility: iv, event_implied_move_percent: iv * 10, realized_move_percent: iv * 8 },
++  provider: 'manual', sourceQuality: 'unverified', freshness: 'manual', fetchedAt: '2026-08-12T17:00:00Z', sessionLabel,
++});
++
++const event = (id: string, snapshotId: string, action: ResearchSnapshotLifecycleEvent['action'], createdAt: string, eventOrder = Number(createdAt.slice(11, 13))): ResearchSnapshotLifecycleEvent => ({
++  id, eventOrder, snapshotId, action, reason: action === 'remove' ? 'test_snapshot' : undefined, createdAt,
++});
++
++describe('research snapshot lifecycle partition', () => {
++  const snapshots = [snapshot('a', 'T-3', 0.2), snapshot('b', 'T-1', 0.3), snapshot('c', 'T0', 0.4)];
++
++  it('excludes removed observations from history, calibration, IV context, and timeline counts', () => {
++    const partitioned = partitionResearchSnapshots(snapshots, [event('remove-c', 'c', 'remove', '2026-08-13T10:00:00Z')]);
++    expect(partitioned.active.map((item) => item.id)).toEqual(['a', 'b']);
++    expect(partitioned.removed.map((item) => item.snapshot.id)).toEqual(['c']);
++    expect(calibrationStats(partitioned.active.map((item) => ({ impliedMove: Number(item.values.event_implied_move_percent), realizedMove: Number(item.values.realized_move_percent) })))?.count).toBe(2);
++    expect(ivContext(0.3, partitioned.active.map((item) => Number(item.values.implied_volatility)))?.count).toBe(2);
++    expect(partitioned.active.filter((item) => item.sessionLabel === 'T0')).toHaveLength(0);
++  });
++
++  it('restores the exact original observation only after an explicit later restore event', () => {
++    const partitioned = partitionResearchSnapshots(snapshots, [
++      event('remove-c', 'c', 'remove', '2026-08-13T10:00:00Z'),
++      event('restore-c', 'c', 'restore', '2026-08-13T11:00:00Z'),
++    ]);
++    expect(partitioned.active).toEqual(snapshots);
++    expect(partitioned.removed).toEqual([]);
++    expect(calibrationStats(partitioned.active.map((item) => ({ impliedMove: Number(item.values.event_implied_move_percent), realizedMove: Number(item.values.realized_move_percent) })))?.count).toBe(3);
++  });
++
++  it('keeps a stale snapshot removed after the workspace refreshes the latest event state', () => {
++    const partitioned = partitionResearchSnapshots(snapshots, [event('remove-b', 'b', 'remove', '2026-08-13T12:00:00Z')]);
++    expect(partitioned.active.some((item) => item.id === 'b')).toBe(false);
++  });
++});
+diff --git a/app/src/lib/research-snapshot-lifecycle.ts b/app/src/lib/research-snapshot-lifecycle.ts
+new file mode 100644
+index 0000000..d9da50d
+--- /dev/null
++++ b/app/src/lib/research-snapshot-lifecycle.ts
+@@ -0,0 +1,15 @@
++import type { RemovedResearchSnapshot, ResearchSnapshot, ResearchSnapshotLifecycleEvent } from '../types/domain';
++
++export function partitionResearchSnapshots(snapshots: ResearchSnapshot[], events: ResearchSnapshotLifecycleEvent[]) {
++  const latest = new Map<string, ResearchSnapshotLifecycleEvent>();
++  for (const event of [...events].sort((a, b) => a.eventOrder - b.eventOrder)) latest.set(event.snapshotId, event);
++
++  const active: ResearchSnapshot[] = [];
++  const removed: RemovedResearchSnapshot[] = [];
++  for (const snapshot of snapshots) {
++    const lifecycle = latest.get(snapshot.id);
++    if (lifecycle?.action === 'remove') removed.push({ snapshot, removal: lifecycle });
++    else active.push(snapshot);
++  }
++  return { active, removed };
++}
+diff --git a/app/src/styles/visual-polish.css b/app/src/styles/visual-polish.css
+index 0d2115a..3a425e2 100644
+--- a/app/src/styles/visual-polish.css
++++ b/app/src/styles/visual-polish.css
+@@ -409,9 +409,10 @@ body {
+ .catalyst-filters{padding:0;margin:14px 0 20px}.catalyst-filters summary{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:14px 16px;font-weight:800}.catalyst-filters summary span{color:var(--muted);font:500 11px 'DM Mono',monospace}.catalyst-filters>div{display:grid;grid-template-columns:2fr repeat(4,minmax(120px,1fr));gap:10px;padding:0 16px 16px}.catalyst-filters label{display:grid;gap:5px;font-size:11px;font-weight:800}.catalyst-filters select,.catalyst-filters input{width:100%;min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink);padding:8px;font:inherit}.horizon-filter{display:flex;gap:6px;align-items:end;flex-wrap:wrap}.horizon-filter button{border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);padding:8px 10px}.horizon-filter button.active{background:var(--orange);border-color:var(--orange);color:#fff}
+ .war-room-summary{display:grid;gap:16px}.war-room-brief-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.war-room-brief-grid .card{min-width:0}.brief-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0 0}.brief-list dt{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.brief-list dd{margin:3px 0 0;font-weight:800;overflow-wrap:anywhere}.related-idea-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.related-idea-row span{display:grid;gap:2px;min-width:160px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);text-transform:capitalize}.related-idea-row span:not(b){font-size:11px;color:var(--muted)}
+ .research-ledger{display:grid;gap:16px}.research-ledger>.section-heading{margin:0}.ledger-form{margin:0;background:var(--bg)}.ledger-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.ledger-grid h3{margin-bottom:8px}.ledger-list{display:grid;gap:8px}.ledger-list article{display:grid;gap:3px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);min-width:0}.ledger-list article a,.ledger-list article b{font-weight:800;color:var(--ink);overflow-wrap:anywhere}.ledger-list article span,.ledger-list article small{color:var(--muted);font-size:10px;overflow-wrap:anywhere}.ledger-list article p{margin:4px 0 0;font-size:12px}.paired-input{display:grid;grid-template-columns:1fr 1fr;gap:6px}.muted-copy{color:var(--muted)}.research-stage-strip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);text-transform:capitalize}.research-stage-strip>span:last-child{color:var(--muted);font-size:11px}.research-stage-strip b{color:var(--orange)}
++.research-snapshot-list{display:grid;gap:12px}.research-snapshot-card{display:grid;gap:10px;min-width:0;padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}.research-snapshot-card>header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.research-snapshot-card>header>div{display:grid;min-width:0}.research-snapshot-card>header span,.snapshot-provenance,.research-snapshot-card>p{color:var(--muted);font-size:10px}.research-snapshot-card>p{margin:0}.snapshot-provenance{display:flex;flex-wrap:wrap;gap:5px 12px}.snapshot-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:0}.snapshot-metrics>div{min-width:0;padding:8px;border-radius:8px;background:var(--surface)}.snapshot-metrics dt{color:var(--muted);font-size:8px;text-transform:uppercase}.snapshot-metrics dd{margin:2px 0 0;font-size:10px;font-weight:800;overflow-wrap:anywhere}.research-snapshot-card>footer{display:flex;justify-content:flex-end;padding-top:2px}.research-snapshot-card>footer .subtle-danger{width:auto;min-height:34px;padding:6px 9px;font-size:10px}.snapshot-removal-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:11px;padding:15px;border:1px solid color-mix(in srgb,var(--red) 35%,var(--line));border-radius:12px;background:var(--red-soft)}.snapshot-removal-form h3,.snapshot-removal-form p,.snapshot-removal-form footer{grid-column:1/-1}.snapshot-removal-form h3{margin:0}.snapshot-removal-form p{margin:0;color:var(--muted);font-size:11px}.snapshot-removal-form label{display:grid;gap:5px;font-size:10px;font-weight:800}.snapshot-removal-form select,.snapshot-removal-form textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);padding:9px}.snapshot-removal-form textarea{min-height:64px}.snapshot-removal-form footer{display:flex;justify-content:flex-end;gap:8px}.snapshot-comparisons{display:grid;gap:9px}.snapshot-comparisons>h4{margin:0}.snapshot-comparisons>article{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}.snapshot-comparisons article>header,.snapshot-comparisons article>p{grid-column:1/-1}.snapshot-comparisons article>header{display:flex;justify-content:space-between;gap:8px}.snapshot-comparisons article>header span,.snapshot-comparisons article>p,.snapshot-comparisons article>div span,.snapshot-comparisons article>div small{color:var(--muted);font-size:9px}.snapshot-comparisons article>div{display:grid;gap:2px;padding:8px;border-radius:8px;background:var(--surface)}.snapshot-comparisons article>p{margin:0}.removed-snapshots{padding-top:12px;border-top:1px solid var(--line)}.removed-snapshots>summary{cursor:pointer;font-weight:800}.removed-snapshots>p{color:var(--muted);font-size:10px}.removed-snapshots>div{display:grid;gap:7px}.removed-snapshots article{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--bg)}.removed-snapshots article>div{display:grid;min-width:0}.removed-snapshots article span,.removed-snapshots article small{color:var(--muted);font-size:9px}.removed-snapshots article button{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:34px;padding:6px 9px;font-size:10px}
+ .research-board-filter{display:flex;align-items:end;justify-content:space-between;gap:16px;margin:10px 0 16px}.research-board-filter label{display:grid;gap:5px;min-width:210px;font-size:11px;font-weight:800}.research-board-filter select{min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);padding:8px;text-transform:capitalize}.research-board-filter p{max-width:660px;margin:0;color:var(--muted);font-size:11px}.exposure-summary{margin-bottom:16px}.exposure-summary>header{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:12px}.exposure-summary>header p{max-width:440px;margin:0;color:var(--muted);font-size:11px}.exposure-summary>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}.exposure-summary article{display:grid;gap:3px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);text-transform:capitalize}.exposure-summary article strong{color:var(--orange);font-size:18px}.exposure-summary article span{color:var(--muted);font-size:10px}
+ .decision-record-editor{display:grid;gap:10px;margin:0 0 16px}.decision-record-editor>header{display:flex;align-items:center;justify-content:space-between;gap:16px}.decision-record-editor>header p{margin:2px 0 0;color:var(--muted);font-size:11px}.decision-record-editor>.inline-form{margin:0;background:var(--bg)}
+ 
+ @media(max-width:1000px){.catalyst-filters>div{grid-template-columns:repeat(2,minmax(0,1fr))}.horizon-filter{grid-column:1/-1}.workflow-sheet .step-nav{overflow-x:auto;justify-content:flex-start}.workflow-sheet .step-nav button{min-width:112px}}
+-@media(max-width:700px){.war-room-brief-grid,.ledger-grid{grid-template-columns:1fr}.catalyst-filters>div{grid-template-columns:1fr}.horizon-filter{grid-column:auto}.brief-list{grid-template-columns:1fr 1fr}.research-ledger>.section-heading{align-items:flex-start}.research-ledger>.section-heading .action-row{width:100%}.research-ledger>.section-heading .action-row button{flex:1}.related-idea-row span{width:100%}.research-board-filter,.exposure-summary>header{align-items:flex-start;flex-direction:column}.research-board-filter label{width:100%}.exposure-summary>div{grid-template-columns:1fr 1fr}}
++@media(max-width:700px){.war-room-brief-grid,.ledger-grid{grid-template-columns:1fr}.catalyst-filters>div{grid-template-columns:1fr}.horizon-filter{grid-column:auto}.brief-list{grid-template-columns:1fr 1fr}.research-ledger>.section-heading{align-items:flex-start}.research-ledger>.section-heading .action-row{width:100%}.research-ledger>.section-heading .action-row button{flex:1}.related-idea-row span{width:100%}.research-board-filter,.exposure-summary>header{align-items:flex-start;flex-direction:column}.research-board-filter label{width:100%}.exposure-summary>div{grid-template-columns:1fr 1fr}.snapshot-removal-form,.snapshot-comparisons>article{grid-template-columns:1fr}.snapshot-removal-form h3,.snapshot-removal-form p,.snapshot-removal-form footer,.snapshot-comparisons article>header,.snapshot-comparisons article>p{grid-column:auto}.snapshot-removal-form footer{display:grid;grid-template-columns:1fr 1fr}.snapshot-removal-form footer button{min-width:0}.removed-snapshots article{align-items:flex-start;flex-direction:column}.removed-snapshots article button{align-self:flex-end}.snapshot-metrics{grid-template-columns:1fr 1fr}}
+ @media(max-width:420px){.exposure-summary>div{grid-template-columns:1fr}}
+diff --git a/app/src/types/domain.ts b/app/src/types/domain.ts
+index bab283d..13fc4ec 100644
+--- a/app/src/types/domain.ts
++++ b/app/src/types/domain.ts
+@@ -137,6 +137,23 @@ export type ResearchSnapshot = {
+   catalystSession?: string;
+ };
+ 
++export type ResearchSnapshotRemovalReason = 'test_snapshot' | 'data_entry_error' | 'wrong_expiration' | 'duplicate' | 'wrong_ticker' | 'bad_source_data' | 'other';
++
++export type ResearchSnapshotLifecycleEvent = {
++  id: string;
++  eventOrder: number;
++  snapshotId: string;
++  action: 'remove' | 'restore';
++  reason?: ResearchSnapshotRemovalReason;
++  note?: string;
++  createdAt: string;
++};
++
++export type RemovedResearchSnapshot = {
++  snapshot: ResearchSnapshot;
++  removal: ResearchSnapshotLifecycleEvent;
++};
++
+ export type ResearchWorkspace = { id: string; name: string; createdBy: string; updatedAt: string };
+ export type WorkspaceMember = { workspaceId: string; userId: string; displayName: string; initials: string; workspaceRole: 'owner' | 'member'; membershipStatus: 'active' | 'left' | 'removed'; joinedAt: string };
+ export type PendingWorkspaceInvite = { id: string; workspaceId: string; workspaceName: string; invitedByName: string; expiresAt: string };
+@@ -226,6 +243,7 @@ export type Workspace = {
+   ideaCatalystLinks: TradeIdeaCatalystLink[];
+   researchSources: ResearchSource[];
+   researchSnapshots: ResearchSnapshot[];
++  removedResearchSnapshots: RemovedResearchSnapshot[];
+   positions: Position[];
+   journal: JournalRecord[];
+   opportunities: Opportunity[];
+diff --git a/supabase/migrations/20260813030000_phase_8_5_1_snapshot_lifecycle.sql b/supabase/migrations/20260813030000_phase_8_5_1_snapshot_lifecycle.sql
+new file mode 100644
+index 0000000..f1b3648
+--- /dev/null
++++ b/supabase/migrations/20260813030000_phase_8_5_1_snapshot_lifecycle.sql
+@@ -0,0 +1,186 @@
++begin;
++
++alter table public.research_snapshots
++  add constraint research_snapshots_id_user_unique unique (id, user_id);
++
++create table public.research_snapshot_lifecycle_events (
++  id uuid primary key default gen_random_uuid(),
++  event_order bigint generated always as identity unique,
++  snapshot_id uuid not null,
++  user_id uuid not null references public.profiles(id) on delete cascade,
++  action text not null check (action in ('remove', 'restore')),
++  reason text check (reason in (
++    'test_snapshot',
++    'data_entry_error',
++    'wrong_expiration',
++    'duplicate',
++    'wrong_ticker',
++    'bad_source_data',
++    'other'
++  )),
++  note text check (note is null or (length(btrim(note)) between 1 and 500)),
++  created_at timestamptz not null default now(),
++  constraint research_snapshot_lifecycle_snapshot_owner_fkey
++    foreign key (snapshot_id, user_id)
++    references public.research_snapshots(id, user_id)
++    on delete cascade,
++  constraint research_snapshot_lifecycle_action_payload_check
++    check (
++      (action = 'remove' and reason is not null)
++      or (action = 'restore' and reason is null and note is null)
++    )
++);
++
++comment on table public.research_snapshot_lifecycle_events is
++  'Append-only removal and restoration events for immutable user-owned research snapshots.';
++comment on column public.research_snapshot_lifecycle_events.reason is
++  'Required removal reason; restoration events intentionally have no reason or note.';
++
++create index research_snapshot_lifecycle_user_snapshot_created_idx
++  on public.research_snapshot_lifecycle_events(user_id, snapshot_id, event_order desc);
++
++alter table public.research_snapshot_lifecycle_events enable row level security;
++
++revoke all on public.research_snapshot_lifecycle_events from public, anon, authenticated;
++grant select on public.research_snapshot_lifecycle_events to authenticated;
++grant select, insert, update, delete on public.research_snapshot_lifecycle_events to service_role;
++revoke all on sequence public.research_snapshot_lifecycle_events_event_order_seq from public, anon, authenticated;
++grant usage, select on sequence public.research_snapshot_lifecycle_events_event_order_seq to service_role;
++
++create policy research_snapshot_lifecycle_owner_select
++on public.research_snapshot_lifecycle_events
++for select to authenticated
++using (
++  user_id = (select auth.uid())
++  and (select private.is_approved_user())
++  and exists (
++    select 1
++    from public.profiles profile
++    where profile.id = (select auth.uid())
++      and profile.account_status = 'active'
++  )
++);
++
++create or replace function public.remove_research_snapshot(
++  p_snapshot_id uuid,
++  p_reason text,
++  p_note text default null
++)
++returns uuid
++language plpgsql
++security definer
++set search_path = ''
++as $$
++declare
++  actor_id uuid := (select auth.uid());
++  latest_event public.research_snapshot_lifecycle_events%rowtype;
++  lifecycle_id uuid;
++begin
++  if actor_id is null
++    or not (select private.is_approved_user())
++    or not exists (
++      select 1 from public.profiles profile
++      where profile.id = actor_id and profile.account_status = 'active'
++    )
++  then
++    raise exception 'approved_account_required';
++  end if;
++
++  if p_reason is null or p_reason not in (
++    'test_snapshot', 'data_entry_error', 'wrong_expiration', 'duplicate',
++    'wrong_ticker', 'bad_source_data', 'other'
++  ) then
++    raise exception 'invalid_removal_reason';
++  end if;
++
++  if p_note is not null and length(btrim(p_note)) > 500 then
++    raise exception 'removal_note_too_long';
++  end if;
++
++  perform pg_advisory_xact_lock(hashtextextended(p_snapshot_id::text, 0));
++
++  if not exists (
++    select 1 from public.research_snapshots snapshot
++    where snapshot.id = p_snapshot_id and snapshot.user_id = actor_id
++  ) then
++    raise exception 'snapshot_not_found';
++  end if;
++
++  select event.* into latest_event
++  from public.research_snapshot_lifecycle_events event
++  where event.snapshot_id = p_snapshot_id and event.user_id = actor_id
++  order by event.event_order desc
++  limit 1;
++
++  if latest_event.action = 'remove' then
++    return latest_event.id;
++  end if;
++
++  insert into public.research_snapshot_lifecycle_events(snapshot_id, user_id, action, reason, note)
++  values (p_snapshot_id, actor_id, 'remove', p_reason, nullif(btrim(p_note), ''))
++  returning id into lifecycle_id;
++
++  return lifecycle_id;
++end;
++$$;
++
++create or replace function public.restore_research_snapshot(p_snapshot_id uuid)
++returns uuid
++language plpgsql
++security definer
++set search_path = ''
++as $$
++declare
++  actor_id uuid := (select auth.uid());
++  latest_event public.research_snapshot_lifecycle_events%rowtype;
++  lifecycle_id uuid;
++begin
++  if actor_id is null
++    or not (select private.is_approved_user())
++    or not exists (
++      select 1 from public.profiles profile
++      where profile.id = actor_id and profile.account_status = 'active'
++    )
++  then
++    raise exception 'approved_account_required';
++  end if;
++
++  perform pg_advisory_xact_lock(hashtextextended(p_snapshot_id::text, 0));
++
++  if not exists (
++    select 1 from public.research_snapshots snapshot
++    where snapshot.id = p_snapshot_id and snapshot.user_id = actor_id
++  ) then
++    raise exception 'snapshot_not_found';
++  end if;
++
++  select event.* into latest_event
++  from public.research_snapshot_lifecycle_events event
++  where event.snapshot_id = p_snapshot_id and event.user_id = actor_id
++  order by event.event_order desc
++  limit 1;
++
++  if latest_event.id is null then
++    raise exception 'snapshot_not_removed';
++  end if;
++
++  if latest_event.action = 'restore' then
++    return latest_event.id;
++  end if;
++
++  insert into public.research_snapshot_lifecycle_events(snapshot_id, user_id, action)
++  values (p_snapshot_id, actor_id, 'restore')
++  returning id into lifecycle_id;
++
++  return lifecycle_id;
++end;
++$$;
++
++revoke all on function public.remove_research_snapshot(uuid, text, text) from public, anon, authenticated;
++revoke all on function public.restore_research_snapshot(uuid) from public, anon, authenticated;
++grant execute on function public.remove_research_snapshot(uuid, text, text) to authenticated;
++grant execute on function public.restore_research_snapshot(uuid) to authenticated;
++grant execute on function public.remove_research_snapshot(uuid, text, text) to service_role;
++grant execute on function public.restore_research_snapshot(uuid) to service_role;
++
++commit;
+diff --git a/supabase/tests/phase-8-5-1-snapshot-lifecycle-structure.sql b/supabase/tests/phase-8-5-1-snapshot-lifecycle-structure.sql
+new file mode 100644
+index 0000000..390ff26
+--- /dev/null
++++ b/supabase/tests/phase-8-5-1-snapshot-lifecycle-structure.sql
+@@ -0,0 +1,68 @@
++begin;
++
++do $$
++begin
++  if to_regclass('public.research_snapshot_lifecycle_events') is null then
++    raise exception 'research snapshot lifecycle table is missing';
++  end if;
++  if not coalesce((select relrowsecurity from pg_class where oid = 'public.research_snapshot_lifecycle_events'::regclass), false) then
++    raise exception 'research snapshot lifecycle RLS is not enabled';
++  end if;
++  if has_table_privilege('anon', 'public.research_snapshot_lifecycle_events', 'select') then
++    raise exception 'anon must not read research snapshot lifecycle events';
++  end if;
++  if not has_table_privilege('authenticated', 'public.research_snapshot_lifecycle_events', 'select') then
++    raise exception 'authenticated users need lifecycle select access through RLS';
++  end if;
++  if has_table_privilege('authenticated', 'public.research_snapshot_lifecycle_events', 'insert')
++    or has_table_privilege('authenticated', 'public.research_snapshot_lifecycle_events', 'update')
++    or has_table_privilege('authenticated', 'public.research_snapshot_lifecycle_events', 'delete') then
++    raise exception 'authenticated users must mutate lifecycle state only through RPCs';
++  end if;
++  if has_table_privilege('authenticated', 'public.research_snapshots', 'update')
++    or has_table_privilege('authenticated', 'public.research_snapshots', 'delete') then
++    raise exception 'original research snapshots must remain immutable';
++  end if;
++  if to_regprocedure('public.remove_research_snapshot(uuid,text,text)') is null
++    or to_regprocedure('public.restore_research_snapshot(uuid)') is null then
++    raise exception 'snapshot lifecycle RPCs are missing';
++  end if;
++  if has_function_privilege('anon', 'public.remove_research_snapshot(uuid,text,text)', 'execute')
++    or has_function_privilege('anon', 'public.restore_research_snapshot(uuid)', 'execute') then
++    raise exception 'anon must not execute snapshot lifecycle RPCs';
++  end if;
++  if not has_function_privilege('authenticated', 'public.remove_research_snapshot(uuid,text,text)', 'execute')
++    or not has_function_privilege('authenticated', 'public.restore_research_snapshot(uuid)', 'execute') then
++    raise exception 'authenticated users need snapshot lifecycle RPC access';
++  end if;
++  if not exists (
++    select 1 from pg_policies
++    where schemaname = 'public' and tablename = 'research_snapshot_lifecycle_events'
++      and policyname = 'research_snapshot_lifecycle_owner_select'
++  ) then
++    raise exception 'snapshot lifecycle owner-select policy is missing';
++  end if;
++  if not exists (
++    select 1 from information_schema.columns
++    where table_schema = 'public' and table_name = 'research_snapshot_lifecycle_events'
++      and column_name = 'event_order' and is_identity = 'YES'
++  ) then
++    raise exception 'monotonic lifecycle event order is missing';
++  end if;
++  if not exists (
++    select 1 from pg_proc
++    where oid in (
++      'public.remove_research_snapshot(uuid,text,text)'::regprocedure,
++      'public.restore_research_snapshot(uuid)'::regprocedure
++    )
++      and prosecdef
++      and proconfig = array['search_path=""']::text[]
++    group by prosecdef, proconfig
++    having count(*) = 2
++  ) then
++    raise exception 'snapshot lifecycle RPCs must use a locked search path';
++  end if;
++end;
++$$;
++
++rollback;
+diff --git a/supabase/tests/phase-8-5-1-snapshot-lifecycle-two-user-rls.sql b/supabase/tests/phase-8-5-1-snapshot-lifecycle-two-user-rls.sql
+new file mode 100644
+index 0000000..5512b6b
+--- /dev/null
++++ b/supabase/tests/phase-8-5-1-snapshot-lifecycle-two-user-rls.sql
+@@ -0,0 +1,72 @@
++begin;
++
++insert into auth.users(id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
++values
++  ('51000000-0000-0000-0000-000000000001', 'snapshot-a@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now()),
++  ('51000000-0000-0000-0000-000000000002', 'snapshot-b@example.test', '', now(), '{"provider":"email","providers":["email"]}', '{}', now(), now());
++
++update public.profiles
++set approved = true, account_status = 'active'
++where id in ('51000000-0000-0000-0000-000000000001', '51000000-0000-0000-0000-000000000002');
++
++insert into public.catalysts(id, user_id, event, event_type, created_by, updated_by, visibility, data)
++values
++  ('53000000-0000-0000-0000-000000000001', '51000000-0000-0000-0000-000000000001', 'User A lifecycle fixture', 'Other', '51000000-0000-0000-0000-000000000001', '51000000-0000-0000-0000-000000000001', 'private', '{}'),
++  ('53000000-0000-0000-0000-000000000002', '51000000-0000-0000-0000-000000000002', 'User B lifecycle fixture', 'Other', '51000000-0000-0000-0000-000000000002', '51000000-0000-0000-0000-000000000002', 'private', '{}');
++
++insert into public.research_snapshots(id, user_id, catalyst_id, snapshot_type, observed_at, methodology, values)
++values
++  ('52000000-0000-0000-0000-000000000001', '51000000-0000-0000-0000-000000000001', '53000000-0000-0000-0000-000000000001', 'market_pricing', now(), 'User A immutable fixture.', '{"implied_volatility": 0.2}'),
++  ('52000000-0000-0000-0000-000000000002', '51000000-0000-0000-0000-000000000002', '53000000-0000-0000-0000-000000000002', 'market_pricing', now(), 'User B immutable fixture.', '{"implied_volatility": 0.3}');
++
++set local role authenticated;
++select set_config('request.jwt.claim.sub', '51000000-0000-0000-0000-000000000001', true);
++select set_config('request.jwt.claim.role', 'authenticated', true);
++
++select public.remove_research_snapshot('52000000-0000-0000-0000-000000000001', 'test_snapshot', 'Lifecycle RLS fixture.');
++select public.remove_research_snapshot('52000000-0000-0000-0000-000000000001', 'duplicate');
++
++do $$
++begin
++  if (select count(*) from public.research_snapshot_lifecycle_events) <> 1 then
++    raise exception 'owner should see the removal event';
++  end if;
++  if (select methodology from public.research_snapshots where id = '52000000-0000-0000-0000-000000000001') <> 'User A immutable fixture.' then
++    raise exception 'removal mutated the original snapshot';
++  end if;
++end;
++$$;
++
++select set_config('request.jwt.claim.sub', '51000000-0000-0000-0000-000000000002', true);
++
++do $$
++begin
++  if (select count(*) from public.research_snapshot_lifecycle_events) <> 0 then
++    raise exception 'a second user can read another owner lifecycle event';
++  end if;
++  begin
++    perform public.restore_research_snapshot('52000000-0000-0000-0000-000000000001');
++    raise exception 'a second user restored another owner snapshot';
++  exception when others then
++    if sqlerrm not like '%snapshot_not_found%' then raise; end if;
++  end;
++end;
++$$;
++
++select set_config('request.jwt.claim.sub', '51000000-0000-0000-0000-000000000001', true);
++select public.restore_research_snapshot('52000000-0000-0000-0000-000000000001');
++select public.restore_research_snapshot('52000000-0000-0000-0000-000000000001');
++
++do $$
++begin
++  if (select count(*) from public.research_snapshot_lifecycle_events) <> 2 then
++    raise exception 'owner restore event was not appended';
++  end if;
++  if (select action from public.research_snapshot_lifecycle_events order by event_order desc limit 1) <> 'restore' then
++    raise exception 'latest lifecycle state should be restored';
++  end if;
++end;
++$$;
++
++reset role;
++rollback;
+-- 
+2.50.1 (Apple Git-155)
+

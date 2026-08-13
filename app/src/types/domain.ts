@@ -137,6 +137,23 @@ export type ResearchSnapshot = {
   catalystSession?: string;
 };
 
+export type ResearchSnapshotRemovalReason = 'test_snapshot' | 'data_entry_error' | 'wrong_expiration' | 'duplicate' | 'wrong_ticker' | 'bad_source_data' | 'other';
+
+export type ResearchSnapshotLifecycleEvent = {
+  id: string;
+  eventOrder: number;
+  snapshotId: string;
+  action: 'remove' | 'restore';
+  reason?: ResearchSnapshotRemovalReason;
+  note?: string;
+  createdAt: string;
+};
+
+export type RemovedResearchSnapshot = {
+  snapshot: ResearchSnapshot;
+  removal: ResearchSnapshotLifecycleEvent;
+};
+
 export type ResearchWorkspace = { id: string; name: string; createdBy: string; updatedAt: string };
 export type WorkspaceMember = { workspaceId: string; userId: string; displayName: string; initials: string; workspaceRole: 'owner' | 'member'; membershipStatus: 'active' | 'left' | 'removed'; joinedAt: string };
 export type PendingWorkspaceInvite = { id: string; workspaceId: string; workspaceName: string; invitedByName: string; expiresAt: string };
@@ -226,6 +243,7 @@ export type Workspace = {
   ideaCatalystLinks: TradeIdeaCatalystLink[];
   researchSources: ResearchSource[];
   researchSnapshots: ResearchSnapshot[];
+  removedResearchSnapshots: RemovedResearchSnapshot[];
   positions: Position[];
   journal: JournalRecord[];
   opportunities: Opportunity[];

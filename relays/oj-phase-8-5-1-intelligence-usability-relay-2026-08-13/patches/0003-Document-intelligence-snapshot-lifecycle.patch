@@ -1,0 +1,120 @@
+From 352e7cdc91a55db692955593971f22da7126786a Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Thu, 13 Aug 2026 09:12:19 -0400
+Subject: [PATCH 3/3] Document intelligence snapshot lifecycle
+
+---
+ app/tsconfig.tsbuildinfo        |  2 +-
+ docs/CATALYST_CALIBRATION.md    |  4 +++-
+ docs/CATALYST_INTELLIGENCE.md   | 19 ++++++++++++++++++-
+ docs/CATALYST_PRICING_ENGINE.md |  4 ++++
+ docs/SUPABASE_ARCHITECTURE.md   | 10 ++++++++++
+ 5 files changed, 36 insertions(+), 3 deletions(-)
+
+diff --git a/app/tsconfig.tsbuildinfo b/app/tsconfig.tsbuildinfo
+index 282ea9a..3351deb 100644
+--- a/app/tsconfig.tsbuildinfo
++++ b/app/tsconfig.tsbuildinfo
+@@ -1 +1 @@
+-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/authscreen.test.tsx","./src/components/authscreen.tsx","./src/components/catalystintelligence.test.tsx","./src/components/catalystintelligence.tsx","./src/components/catalystsourcelink.test.tsx","./src/components/catalystsourcelink.tsx","./src/components/catalystwarroom.test.tsx","./src/components/catalystwarroom.tsx","./src/components/cloudaccount.tsx","./src/components/loadingscreen.tsx","./src/components/memberbadge.tsx","./src/components/researchledger.tsx","./src/components/sharedthesispanel.test.tsx","./src/components/sharedthesispanel.tsx","./src/components/workflow.tsx","./src/components/auth-state.test.ts","./src/components/auth-state.ts","./src/components/cards/cards.test.tsx","./src/components/cards/index.tsx","./src/components/layout/appshell.test.tsx","./src/components/layout/appshell.tsx","./src/config/navigation.test.ts","./src/config/navigation.ts","./src/data/actions.test.ts","./src/data/actions.ts","./src/data/catalyst-intelligence.test.ts","./src/data/catalyst-intelligence.ts","./src/data/collaboration-actions.ts","./src/data/collaboration.test.ts","./src/data/collaboration.ts","./src/data/demo.ts","./src/data/workspace.test.ts","./src/data/workspace.ts","./src/features/packet.test.ts","./src/features/packet.ts","./src/features/export/export.test.ts","./src/features/export/markdown.ts","./src/features/export/zip.ts","./src/features/ideas/canonical.test.ts","./src/features/ideas/canonical.ts","./src/lib/auth-activation.test.ts","./src/lib/auth.test.ts","./src/lib/auth.ts","./src/lib/calendar.ts","./src/lib/catalyst-filter.test.ts","./src/lib/catalyst-filter.ts","./src/lib/date-time.test.ts","./src/lib/date-time.ts","./src/lib/external-reference.test.ts","./src/lib/external-reference.ts","./src/lib/forecast-window.test.ts","./src/lib/forecast-window.ts","./src/lib/idea-lifecycle.ts","./src/lib/invite-template.test.ts","./src/lib/loading.test.ts","./src/lib/loading.ts","./src/lib/payoff.test.ts","./src/lib/payoff.ts","./src/lib/research-metrics.test.ts","./src/lib/research-metrics.ts","./src/lib/session.test.ts","./src/lib/session.ts","./src/lib/supabase.ts","./src/lib/catalyst-intelligence/analytics.test.ts","./src/lib/catalyst-intelligence/analytics.ts","./src/lib/catalyst-intelligence/company-sources.test.ts","./src/lib/catalyst-intelligence/company-sources.ts","./src/lib/catalyst-intelligence/pricing.test.ts","./src/lib/catalyst-intelligence/pricing.ts","./src/lib/catalyst-intelligence/providers.test.ts","./src/lib/catalyst-intelligence/providers.ts","./src/lib/catalyst-intelligence/scenarios.test.ts","./src/lib/catalyst-intelligence/scenarios.ts","./src/lib/catalyst-intelligence/timeline.test.ts","./src/lib/catalyst-intelligence/timeline.ts","./src/lib/catalyst-intelligence/types.ts","./src/pages/catalystspage.test.tsx","./src/pages/catalystspage.tsx","./src/pages/ideaspage.test.tsx","./src/pages/ideaspage.tsx","./src/pages/insightspage.tsx","./src/pages/journalpage.tsx","./src/pages/overviewpage.test.tsx","./src/pages/overviewpage.tsx","./src/pages/settingspage.test.tsx","./src/pages/settingspage.tsx","./src/pages/tradespage.tsx","./src/pages/workspacepage.test.tsx","./src/pages/workspacepage.tsx","./src/storage/cloud.test.ts","./src/storage/cloud.ts","./src/storage/drafts.test.ts","./src/storage/drafts.ts","./src/storage/revisions.test.ts","./src/storage/revisions.ts","./src/styles/mobile-nav.test.ts","./src/types/domain.ts"],"version":"5.8.3"}
+\ No newline at end of file
++{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/authscreen.test.tsx","./src/components/authscreen.tsx","./src/components/catalystintelligence.test.tsx","./src/components/catalystintelligence.tsx","./src/components/catalystsourcelink.test.tsx","./src/components/catalystsourcelink.tsx","./src/components/catalystwarroom.test.tsx","./src/components/catalystwarroom.tsx","./src/components/cloudaccount.tsx","./src/components/loadingscreen.tsx","./src/components/memberbadge.tsx","./src/components/optionchainsnapshot.test.tsx","./src/components/optionchainsnapshot.tsx","./src/components/researchledger.test.tsx","./src/components/researchledger.tsx","./src/components/sharedthesispanel.test.tsx","./src/components/sharedthesispanel.tsx","./src/components/workflow.tsx","./src/components/auth-state.test.ts","./src/components/auth-state.ts","./src/components/cards/cards.test.tsx","./src/components/cards/index.tsx","./src/components/layout/appshell.test.tsx","./src/components/layout/appshell.tsx","./src/config/navigation.test.ts","./src/config/navigation.ts","./src/data/actions.test.ts","./src/data/actions.ts","./src/data/catalyst-intelligence.test.ts","./src/data/catalyst-intelligence.ts","./src/data/collaboration-actions.ts","./src/data/collaboration.test.ts","./src/data/collaboration.ts","./src/data/demo.ts","./src/data/workspace.test.ts","./src/data/workspace.ts","./src/features/packet.test.ts","./src/features/packet.ts","./src/features/export/export.test.ts","./src/features/export/markdown.ts","./src/features/export/zip.ts","./src/features/ideas/canonical.test.ts","./src/features/ideas/canonical.ts","./src/lib/auth-activation.test.ts","./src/lib/auth.test.ts","./src/lib/auth.ts","./src/lib/calendar.ts","./src/lib/catalyst-filter.test.ts","./src/lib/catalyst-filter.ts","./src/lib/date-time.test.ts","./src/lib/date-time.ts","./src/lib/external-reference.test.ts","./src/lib/external-reference.ts","./src/lib/forecast-window.test.ts","./src/lib/forecast-window.ts","./src/lib/idea-lifecycle.ts","./src/lib/invite-template.test.ts","./src/lib/loading.test.ts","./src/lib/loading.ts","./src/lib/payoff.test.ts","./src/lib/payoff.ts","./src/lib/research-metrics.test.ts","./src/lib/research-metrics.ts","./src/lib/research-snapshot-lifecycle.test.ts","./src/lib/research-snapshot-lifecycle.ts","./src/lib/session.test.ts","./src/lib/session.ts","./src/lib/supabase.ts","./src/lib/catalyst-intelligence/analytics.test.ts","./src/lib/catalyst-intelligence/analytics.ts","./src/lib/catalyst-intelligence/company-sources.test.ts","./src/lib/catalyst-intelligence/company-sources.ts","./src/lib/catalyst-intelligence/option-chain.test.ts","./src/lib/catalyst-intelligence/option-chain.ts","./src/lib/catalyst-intelligence/pricing.test.ts","./src/lib/catalyst-intelligence/pricing.ts","./src/lib/catalyst-intelligence/providers.test.ts","./src/lib/catalyst-intelligence/providers.ts","./src/lib/catalyst-intelligence/scenarios.test.ts","./src/lib/catalyst-intelligence/scenarios.ts","./src/lib/catalyst-intelligence/timeline.test.ts","./src/lib/catalyst-intelligence/timeline.ts","./src/lib/catalyst-intelligence/types.ts","./src/pages/catalystspage.test.tsx","./src/pages/catalystspage.tsx","./src/pages/ideaspage.test.tsx","./src/pages/ideaspage.tsx","./src/pages/insightspage.tsx","./src/pages/journalpage.tsx","./src/pages/overviewpage.test.tsx","./src/pages/overviewpage.tsx","./src/pages/settingspage.test.tsx","./src/pages/settingspage.tsx","./src/pages/tradespage.tsx","./src/pages/workspacepage.test.tsx","./src/pages/workspacepage.tsx","./src/storage/cloud.test.ts","./src/storage/cloud.ts","./src/storage/drafts.test.ts","./src/storage/drafts.ts","./src/storage/revisions.test.ts","./src/storage/revisions.ts","./src/styles/mobile-nav.test.ts","./src/test/fixtures/wmt-option-chain.ts","./src/types/domain.ts"],"version":"5.8.3"}
+\ No newline at end of file
+diff --git a/docs/CATALYST_CALIBRATION.md b/docs/CATALYST_CALIBRATION.md
+index 02a4fcf..b5e1e39 100644
+--- a/docs/CATALYST_CALIBRATION.md
++++ b/docs/CATALYST_CALIBRATION.md
+@@ -24,7 +24,7 @@ Useful comparison snapshots include:
+ - T+1/T+5 realized move and follow-through.
+ - exact source, observed time, fetched time, freshness, and methodology.
+ 
+-Snapshots are append-only. A corrected or later observation creates a new record; it does not rewrite the original market observation.
++Snapshots are append-only. A corrected or later observation creates a new record; it does not rewrite the original market observation. A test, duplicate, or erroneous observation can be removed from active research with an append-only lifecycle event and restored later without modifying or cloning it.
+ 
+ ## Calibration outputs
+ 
+@@ -39,6 +39,8 @@ V1 reports only descriptive statistics when a snapshot includes both an implied
+ 
+ No confidence interval, win probability, or machine-learned score is produced. Small `n` remains visibly small.
+ 
++Only active snapshots enter these calculations. The workspace loader resolves the latest monotonic removal/restore event once, then exposes active and removed collections separately. A removed snapshot therefore contributes to none of the following: session-anchor counts, IV Rank or Percentile history, calibration `n`, implied-versus-realized error, pre-event drift, historical lists, or sample-based data quality. Restoration reintroduces the unchanged original record.
++
+ ## Data-quality rule
+ 
+ The simple quality state considers source quality, freshness, completeness, and sample size:
+diff --git a/docs/CATALYST_INTELLIGENCE.md b/docs/CATALYST_INTELLIGENCE.md
+index f6564ee..0827f77 100644
+--- a/docs/CATALYST_INTELLIGENCE.md
++++ b/docs/CATALYST_INTELLIGENCE.md
+@@ -45,12 +45,29 @@ The **Intelligence** tab contains progressive sections:
+ 
+ Provider checks and market requests are explicit button actions. The application does not poll. A loaded provider result is not added to research history until the user chooses **Save**.
+ 
++### Readable option-chain snapshots
++
++Normalized option chains use the reusable `OptionChainSnapshot` reader before save and in the Research Ledger. The default view pairs calls and puts by strike and shows bid, ask, midpoint, and IV around a central strike column. Contract symbols, volume, open interest, last price, and Greeks remain available under **Contract Details**. The normalized payload remains available, pretty printed, under collapsed **Technical Details**; structured data is never rendered as an inline JSON wall.
++
++The chain header distinguishes provider, freshness, market observation time, retrieval time, and private-cache state. **Delayed** is prominent. `New provider response cached` means the request reached the provider and OJ cached the normalized result; `Private cache hit` means OJ reused a matching private cache record without a new provider request.
++
++The nearest ATM strike minimizes absolute distance from the stored underlying. Exact ties use the lower strike so the result is deterministic; no ATM label appears when the underlying is missing. If that exact strike has both a valid call and put, the existing midpoint and straddle analytics derive the combined dollar and percent move. One-sided or invalid data reports insufficient data rather than mixing strikes.
++
++Manual and provider observations with the same ticker and expiration are presented side by side with provider, freshness, and observation time. OJ does not claim the values are directly comparable when their timestamps differ.
++
++### Snapshot removal and recovery
++
++Snapshots remain immutable after save. **Remove Snapshot** appends a user-owned lifecycle event; it does not edit or delete the original observation. Removed snapshots are excluded from active research, timeline counts, IV context, calibration, history, and data-quality samples. **Removed Snapshots** retains the reason, note, and removal time and can **Restore** the exact original observation with a later append-only lifecycle event.
++
++Removal and restoration require an approved active authenticated owner and atomic RPCs. Another user cannot read or change the lifecycle record. Restoration is explicit, so a stale client refresh cannot recreate removed data. If an observation is wrong, remove it and save a new corrected observation rather than editing history.
++
+ ## Privacy and security
+ 
+ - Research snapshots remain owner-scoped by existing RLS.
+ - Provider credentials exist only in the Supabase Edge Function environment.
+ - The gateway requires an authenticated, approved, active OJ account.
+ - The cache is partitioned by user and exposed only to `service_role`.
++- Snapshot lifecycle metadata is owner-only under RLS and browser roles cannot insert, update, or delete it directly.
+ - External responses are bounded and normalized before storage.
+ - Provider errors are reduced to deterministic codes; secret-bearing upstream messages do not reach the browser.
+ - CORS allows the production Pages origin and the local development origin.
+@@ -64,4 +81,4 @@ Zero recurring cost is an architectural constraint, not a promise that every req
+ 
+ ## Deployment
+ 
+-Deployment requires migration `20260812224500_phase_8_5_catalyst_intelligence.sql` followed by the JWT-protected `catalyst-intelligence-data` Edge Function. Optional server secrets are documented in [DATA_PROVIDERS.md](./DATA_PROVIDERS.md). The existing manual GitHub workflow deploys the migration and function; the user remains final merge and deployment authority.
++Deployment requires migrations `20260812224500_phase_8_5_catalyst_intelligence.sql` and `20260813030000_phase_8_5_1_snapshot_lifecycle.sql`, followed by the JWT-protected `catalyst-intelligence-data` Edge Function. Optional server secrets are documented in [DATA_PROVIDERS.md](./DATA_PROVIDERS.md). The existing manual GitHub workflow deploys pending migrations and the function; the user remains final merge and deployment authority.
+diff --git a/docs/CATALYST_PRICING_ENGINE.md b/docs/CATALYST_PRICING_ENGINE.md
+index 60a02db..f4b3049 100644
+--- a/docs/CATALYST_PRICING_ENGINE.md
++++ b/docs/CATALYST_PRICING_ENGINE.md
+@@ -18,6 +18,10 @@ The calculation requires finite non-negative prices and `ask >= bid`.
+ 
+ This is labeled an approximate priced move. It is not an exact probability boundary.
+ 
++For a normalized provider chain, OJ pairs calls and puts at identical strikes and selects the stored-underlying's nearest strike. Exact distance ties select the lower strike deterministically. The chain summary calls this **Nearest ATM**, not a recommendation. It uses only the call and put from that same strike; a missing side, invalid quote, or missing underlying produces no straddle estimate.
++
++The midpoint helper prefers a valid bid/ask calculation and may use a stored normalized midpoint when one side of the quote is unavailable. Provider, delayed/current freshness, observation time, and retrieval time remain visible next to the resulting estimate.
++
+ **Volatility-implied one-sigma move**
+ 
+ `dollar move = spot × annual IV × sqrt(days to maturity / days in year)`
+diff --git a/docs/SUPABASE_ARCHITECTURE.md b/docs/SUPABASE_ARCHITECTURE.md
+index f477cd7..d1e09fd 100644
+--- a/docs/SUPABASE_ARCHITECTURE.md
++++ b/docs/SUPABASE_ARCHITECTURE.md
+@@ -36,3 +36,13 @@ Supabase is the application authority. Commit SHA and note path fields are optio
+ `20260812025054_catalyst_first_research_foundation.sql` extends the existing Catalyst and Idea tables and adds three owner-scoped tables: `trade_idea_catalysts`, `research_sources`, and append-only `research_snapshots`. It does not duplicate the Calendar, War Room, evidence, mission, forecast, candidate, or Trade systems. See `CATALYST_FIRST_RESEARCH.md` and `RESEARCH_METHODS.md` for product semantics and calculation conventions.
+ 
+ The structural and rolled-back synthetic two-user checks are `supabase/tests/catalyst-first-research-structure.sql` and `supabase/tests/catalyst-first-research-two-user-rls.sql`. Run them through a trusted SQL test session after the migration. The public frontend deliberately treats only missing new ledger tables as a pending-migration condition; other Supabase errors still fail closed.
++
++## Research snapshot lifecycle
++
++`20260813030000_phase_8_5_1_snapshot_lifecycle.sql` preserves `research_snapshots` as the immutable observation ledger and adds `research_snapshot_lifecycle_events` as an append-only owner-scoped state log. A composite foreign key binds every lifecycle event to the same `(snapshot_id,user_id)` owner. Browser roles receive SELECT only through RLS; removal and restoration run through locked-search-path security-definer RPCs that verify the authenticated account is approved and active and that the snapshot belongs to it. Direct browser INSERT, UPDATE, and DELETE remain unavailable for both lifecycle state and original snapshots.
++
++Each event receives a monotonic identity order. The active state is the latest event by that order, which avoids timestamp/UUID tie ambiguity. The remove and restore RPCs serialize changes per snapshot with a transaction advisory lock and are idempotent when the desired state is already current. A restore without a prior removal fails closed.
++
++The frontend partitions all loaded snapshots once into active and removed collections. Every current intelligence/history/calibration consumer uses the active collection; the removed collection is recovery and audit metadata only. Provider cache rows are service-only infrastructure and are not deleted or changed by Research Ledger removal.
++
++Review checks are `supabase/tests/phase-8-5-1-snapshot-lifecycle-structure.sql` and `supabase/tests/phase-8-5-1-snapshot-lifecycle-two-user-rls.sql`. The latter uses rolled-back synthetic users to prove original-row immutability, same-owner remove/restore, and cross-user invisibility and rejection.
+-- 
+2.50.1 (Apple Git-155)
+
