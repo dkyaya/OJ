@@ -5,11 +5,16 @@ export type CatalystDateCertainty = 'confirmed' | 'estimated' | 'unconfirmed' | 
 export type CatalystEventStatus = 'scheduled' | 'released' | 'revised' | 'cancelled' | 'contextual';
 export type SourceQuality = 'official' | 'primary' | 'secondary' | 'unverified';
 export type SnapshotType = 'market_pricing' | 'event_implied_move' | 'expiration_implied_move' | 'entry_window' | 'event_reaction' | 'realized_event_move' | 'macro_context';
+export type TradeClass = 'pre_catalyst_anticipation' | 'catalyst_hold' | 'post_catalyst_confirmation';
+export type ThesisHealth = 'stronger' | 'intact' | 'weaker' | 'invalidated';
+export type ExitReason = 'target_reached' | 'thesis_invalidated' | 'catalyst_approaching' | 'risk_reduction' | 'time_decay' | 'volatility_change' | 'better_opportunity' | 'manual_other';
 
 export type Candidate = {
   id: string;
   name: string;
   legacyName?: string;
+  revision: number;
+  expiration?: string;
   longStrike?: number;
   shortStrike?: number;
   debit?: number;
@@ -18,6 +23,90 @@ export type Candidate = {
   maxProfit?: number;
   breakEven?: number;
   notes?: string;
+};
+
+export type TradeEntryContext = {
+  version: number;
+  capturedAt: string;
+  ideaId: string;
+  ideaRevision: number;
+  ideaStatus?: string;
+  researchStage?: ResearchStage;
+  assetType?: string;
+  bias?: string;
+  thesis?: string;
+  evidence?: string;
+  entryConditions?: string;
+  invalidation?: string;
+  plannedExit?: string;
+  holdThroughEvents: string[];
+  avoidEvents: string[];
+  candidate?: {
+    id: string;
+    revision: number;
+    expiration?: string;
+    longStrike?: number;
+    shortStrike?: number;
+    plannedDebit?: number;
+    plannedContracts?: number;
+    plannedMaxLoss?: number;
+    plannedMaxProfit?: number;
+    plannedBreakEven?: number;
+  };
+  actual?: {
+    expiration?: string;
+    longStrike?: number;
+    shortStrike?: number;
+    contracts: number;
+    debit?: number;
+    fees?: number;
+    maxLoss?: number;
+    maxProfit?: number;
+    breakEven?: number;
+  };
+  originatingCatalystId?: string;
+  catalystCluster?: string;
+  linkedCatalysts: Array<{ catalystId: string; relationship: TradeIdeaCatalystLink['relationship'] }>;
+  researchSnapshotIds: string[];
+  forecastIds: string[];
+  tradeClass?: TradeClass;
+  exposureTags: string[];
+  riskPolicy?: { version?: number; ceiling?: number; openRiskBefore?: number; projectedOpenRisk?: number; overshootAcknowledged?: boolean; overshootNote?: string };
+};
+
+export type TradeCheckin = {
+  id: string;
+  tradeId: string;
+  ideaId: string;
+  thesisHealth: ThesisHealth;
+  checkedAt: string;
+  whatChanged?: string;
+  priceChanged: boolean;
+  catalystChanged: boolean;
+  volatilityChanged: boolean;
+  macroChanged: boolean;
+  plannedExitState: 'still_valid' | 'reassess' | 'changed';
+  invalidationOccurred: boolean;
+  managementView?: string;
+  notes?: string;
+  data: Record<string, unknown>;
+};
+
+export type TradeExit = {
+  id: string;
+  tradeId: string;
+  ideaId: string;
+  exitedAt: string;
+  contractsExited: number;
+  exitValue: number;
+  exitValueType: 'credit' | 'debit';
+  fees: number;
+  realizedPnl: number;
+  exitReason: ExitReason;
+  thesisHealth: ThesisHealth;
+  catalystRelationship?: string;
+  notes?: string;
+  data: Record<string, unknown>;
 };
 
 export type TradeIdea = {
@@ -180,6 +269,20 @@ export type Position = {
   status: 'active' | 'closed';
   contracts: number;
   maxRisk?: number;
+  maxProfit?: number;
+  breakEven?: number;
+  expiration?: string;
+  longStrike?: number;
+  shortStrike?: number;
+  actualDebit?: number;
+  entryFees: number;
+  candidateId?: string;
+  tradeClass?: TradeClass;
+  originatingCatalystId?: string;
+  exposureTags: string[];
+  entryContext?: TradeEntryContext;
+  checkins: TradeCheckin[];
+  exit?: TradeExit;
   openedAt: string;
   closedAt?: string;
   revision: number;
@@ -189,6 +292,7 @@ export type Position = {
 export type JournalRecord = {
   id: string;
   ideaId: string;
+  tradeId?: string;
   kind: 'check-in' | 'review';
   createdAt: string;
   summary: string;

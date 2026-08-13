@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Download, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Download, Pencil, Plus, ReceiptText, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyCard, ExpandablePanel, SummaryCard } from '../components/cards';
 import { PageHeader } from '../components/layout/AppShell';
@@ -14,10 +14,10 @@ function exportIdea(idea: TradeIdea, workspace: Workspace) {
   downloadText(`${idea.ticker}-${idea.id.slice(0, 8)}.md`, tradeMarkdown(idea, workspace.positions.find((item) => item.ideaId === idea.id)));
 }
 
-function ResearchDetails({ idea, workspace, tradeBacked, deleteBlocked, busy, archived, onEdit, onArchive, onDelete, onSaved }: { idea: TradeIdea; workspace: Workspace; tradeBacked: boolean; deleteBlocked: boolean; busy: boolean; archived: boolean; onEdit: () => void; onArchive: () => void; onDelete: () => void; onSaved: () => void | Promise<void> }) {
+function ResearchDetails({ idea, workspace, tradeBacked, deleteBlocked, busy, archived, onEdit, onRecordTrade, onArchive, onDelete, onSaved }: { idea: TradeIdea; workspace: Workspace; tradeBacked: boolean; deleteBlocked: boolean; busy: boolean; archived: boolean; onEdit: () => void; onRecordTrade: () => void; onArchive: () => void; onDelete: () => void; onSaved: () => void | Promise<void> }) {
   const explanationId = `archive-explanation-${idea.id}`;
   return <ExpandablePanel title={archived ? 'Archived Research Details' : 'Research Details'} summary="Thesis, conditions, and candidate spreads.">
-    {!archived && <section className="decision-record-editor"><header><div><h3>Idea Editor</h3><p>Edit setup, catalyst, private research, and the defined-risk candidate. Linked trade history stays unchanged.</p></div><button onClick={onEdit}><Pencil size={15} />Edit Idea</button></header></section>}
+    {!archived && <section className="decision-record-editor"><header><div><h3>Idea Editor</h3><p>Edit current research or record a fill after execution occurs elsewhere. Linked Trade history stays unchanged.</p></div><div className="action-row"><button onClick={onEdit}><Pencil size={15} />Edit Idea</button>{!tradeBacked && ['watchlist','ready'].includes(idea.status) && <button className="primary" onClick={onRecordTrade}><ReceiptText size={15} />Record Trade</button>}</div></header></section>}
     <div className="detail-grid"><section><h3>Thesis</h3><p>{idea.thesis || 'TBD'}</p></section><section><h3>Evidence</h3><p>{idea.evidence || 'TBD'}</p></section><section><h3>Entry Conditions</h3><p>{idea.entryConditions || 'TBD'}</p></section><section><h3>Invalidation</h3><p>{idea.invalidation || 'TBD'}</p></section><section><h3>Planned Exit</h3><p>{idea.plannedExit || 'TBD'}</p></section><section><h3>Hold Through / Avoid</h3><p>{idea.holdThroughEvents.length ? `Hold: ${idea.holdThroughEvents.join(', ')}` : 'Hold-through events TBD'}</p><small>{idea.avoidEvents.length ? `Avoid: ${idea.avoidEvents.join(', ')}` : 'Avoid events TBD'}</small></section></div>
     <div className="candidate-grid">{idea.candidates.length ? idea.candidates.map((candidate) => <SummaryCard key={candidate.id} title={candidate.name} subtitle={`${candidate.longStrike ?? 'TBD'} / ${candidate.shortStrike ?? 'TBD'}`} status="Candidate" metric={candidate.maxLoss === undefined ? 'Risk TBD' : `$${candidate.maxLoss.toFixed(2)} max loss`} meta={candidate.debit === undefined ? 'Debit TBD' : `$${candidate.debit.toFixed(2)} debit`} />) : <EmptyCard title="No Candidates" subtitle="Add a defined-risk structure when research is ready." />}</div>
     <ResearchLedger workspace={workspace} tradeIdeaId={idea.id} catalystId={idea.catalystId} ticker={idea.ticker} onSaved={onSaved} />
@@ -96,7 +96,7 @@ export function DeleteIdeaDialog({ idea, busy, onCancel, onConfirm }: { idea?: T
   </div>;
 }
 
-export function IdeasPage({ workspace, onBuildIdea, onSaved, initialFilter = 'all' }: { workspace: Workspace; onBuildIdea: () => void; onSaved: () => void | Promise<void>; initialFilter?: IdeaFilter }) {
+export function IdeasPage({ workspace, onBuildIdea, onRecordTrade, onSaved, initialFilter = 'all' }: { workspace: Workspace; onBuildIdea: () => void; onRecordTrade?: (idea: TradeIdea) => void; onSaved: () => void | Promise<void>; initialFilter?: IdeaFilter }) {
   const [filter, setFilter] = useState<IdeaFilter>(initialFilter);
   const [editingIdea, setEditingIdea] = useState<TradeIdea>();
   const [pendingArchive, setPendingArchive] = useState<TradeIdea>();
@@ -149,7 +149,7 @@ export function IdeasPage({ workspace, onBuildIdea, onSaved, initialFilter = 'al
       const archived = Boolean(idea.archivedAt); const tradeBacked = workspace.positions.some((item) => item.ideaId === idea.id); const deleteBlocked = tradeBacked || workspace.journal.some((item) => item.ideaId === idea.id); const busy = busyIdeaId === idea.id;
       const action = archived ? <div className="lifecycle-card-actions"><button className="icon-text restore-action" disabled={busy} onClick={() => void changeLifecycle(idea, false)}><ArchiveRestore size={15} />{busy ? 'Restoring…' : 'Restore'}</button><button className="icon-text" onClick={() => exportIdea(idea, workspace)}><Download size={15} />Export</button></div> : <button className="icon-text" onClick={() => exportIdea(idea, workspace)}><Download size={15} />Export</button>;
       return <div className={`object-stack${archived ? ' archived-idea' : ''}`} key={idea.id}><SummaryCard title={idea.ticker} subtitle={idea.strategy} status={archived ? 'Archived' : idea.status} metric={idea.risk === undefined ? 'Risk TBD' : `$${idea.risk.toFixed(2)} risk`} meta={archived ? `Archived ${new Date(idea.archivedAt!).toLocaleDateString()} · r${idea.revision}` : `${idea.bias} · ${idea.status} · r${idea.revision}`} action={action} />
-        <ResearchDetails idea={idea} workspace={workspace} tradeBacked={tradeBacked} deleteBlocked={deleteBlocked} busy={busy} archived={archived} onEdit={() => setEditingIdea(idea)} onArchive={() => setPendingArchive(idea)} onDelete={() => setPendingDelete(idea)} onSaved={onSaved} />
+        <ResearchDetails idea={idea} workspace={workspace} tradeBacked={tradeBacked} deleteBlocked={deleteBlocked} busy={busy} archived={archived} onEdit={() => setEditingIdea(idea)} onRecordTrade={() => onRecordTrade?.(idea)} onArchive={() => setPendingArchive(idea)} onDelete={() => setPendingDelete(idea)} onSaved={onSaved} />
       </div>;
     })}</div> : <EmptyCard title={filter === 'archived' ? 'No Archived Ideas' : 'No Matching Ideas'} subtitle={filter === 'archived' ? 'Archived research will remain available here until you restore it.' : 'Research may end with no trade. New ideas remain drafts until you decide.'} action={filter === 'archived' ? undefined : <button onClick={onBuildIdea}>Build Idea</button>} />}
     {filter !== 'archived' && <SharedThesisPanel workspace={workspace} onSaved={onSaved} />}

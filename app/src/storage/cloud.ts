@@ -56,15 +56,16 @@ async function saveCandidate(draft: Draft, userId: string, revision: number) {
   const existing = await supabase.from('trade_candidates').select('id,revision,name,data').eq('id', candidateId).eq('user_id', userId).maybeSingle();
   const candidateRevision = existing.data ? Number(existing.data.revision) + 1 : 1;
   const data = {
-    label: 'Candidate', long_strike: optionalNumber(text(draft.data, 'Long strike')),
+    label: 'Candidate', expiration: text(draft.data, 'Expiration') || null, long_strike: optionalNumber(text(draft.data, 'Long strike')),
     short_strike: optionalNumber(text(draft.data, 'Short strike')), debit: optionalNumber(text(draft.data, 'Net debit')),
     contracts: optionalInteger(text(draft.data, 'Contracts')), max_loss: optionalNumber(text(draft.data, 'Calculated max loss')),
     max_profit: optionalNumber(text(draft.data, 'Calculated max profit')), break_even: optionalNumber(text(draft.data, 'Calculated break-even')),
   };
-  const candidateFields = ['long_strike','short_strike','debit','contracts','max_loss','max_profit','break_even'] as const;
+  const candidateFields = ['expiration','long_strike','short_strike','debit','contracts','max_loss','max_profit','break_even'] as const;
   const candidateState = (candidateData: Record<string, unknown>) => JSON.stringify(candidateFields.map((key) => {
     const candidateValue = candidateData[key];
-    return candidateValue === null || candidateValue === undefined || candidateValue === '' ? null : Number(candidateValue);
+    if (candidateValue === null || candidateValue === undefined || candidateValue === '') return null;
+    return key === 'expiration' ? String(candidateValue) : Number(candidateValue);
   }));
   if (existing.data && candidateState(existing.data.data as Record<string, unknown>) === candidateState(data)) return;
   const row = { trade_idea_id: draft.id, user_id: userId, name: 'Candidate', data, revision: candidateRevision, source: 'oj_app', updated_at: new Date().toISOString() };
@@ -119,6 +120,7 @@ export async function syncDraft(draft: Draft): Promise<CloudResult> {
       p_candidate_id: candidateId,
       p_candidate: {
         enabled: candidateEnabled,
+        expiration: text(draft.data, 'Expiration') || null,
         long_strike: optionalNumber(text(draft.data, 'Long strike')),
         short_strike: optionalNumber(text(draft.data, 'Short strike')),
         debit: optionalNumber(text(draft.data, 'Net debit')),

@@ -29,10 +29,10 @@ export function spreadMetrics(
   contracts: number | null | undefined,
 ): SpreadMetrics | null {
   const quantity = typeof contracts === 'number' && Number.isInteger(contracts) && contracts > 0 ? contracts : null;
-  if (![longStrike, shortStrike, debit].every(Number.isFinite) || quantity === null || debit < 0) return null;
+  if (![longStrike, shortStrike, debit].every(Number.isFinite) || quantity === null || debit <= 0) return null;
   const validDirection = strategy === 'bull-call-spread' ? shortStrike > longStrike : longStrike > shortStrike;
   const width = Math.abs(shortStrike - longStrike);
-  if (!validDirection || width <= 0 || debit > width) return null;
+  if (!validDirection || width <= 0 || debit >= width) return null;
   return {
     width,
     maxLoss: debit * 100 * quantity,

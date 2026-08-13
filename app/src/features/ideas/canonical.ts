@@ -51,6 +51,7 @@ export const IDEA_SECTIONS: ReadonlyArray<{ title: 'Setup' | 'Catalyst' | 'Resea
     { name: 'Avoid events', label: 'Avoid', multiline: true },
   ] },
   { title: 'Candidate', subtitle: 'Describe one defined-risk candidate without placing an order.', fields: [
+    { name: 'Expiration', label: 'Expiration', inputType: 'date', placeholder: 'Optional' },
     { name: 'Long strike', label: 'Long Strike', inputType: 'number', placeholder: 'Optional' },
     { name: 'Short strike', label: 'Short Strike', inputType: 'number', placeholder: 'Optional' },
     { name: 'Net debit', label: 'Net Debit', inputType: 'number', placeholder: 'Optional' },
@@ -88,6 +89,7 @@ export function ideaToFormData(idea: TradeIdea): Record<string, string> {
     Invalidation: idea.invalidation || '', 'Hold through events': joined(idea.holdThroughEvents),
     'Avoid events': joined(idea.avoidEvents),
     'Candidate ID': candidate?.id || '',
+    Expiration: candidate?.expiration || '',
     'Long strike': candidate?.longStrike?.toString() || '',
     'Short strike': candidate?.shortStrike?.toString() || '',
     'Net debit': candidate?.debit?.toString() || '',

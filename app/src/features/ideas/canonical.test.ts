@@ -19,7 +19,7 @@ describe('canonical Idea workflow — 40 functional cases', () => {
     ['Setup', ['Ticker', 'Asset Type', 'Strategy', 'Bias', 'Status']],
     ['Catalyst', ['Catalyst', 'Scheduled Catalyst', 'Event Name', 'Source', 'Link', 'Date', 'Category']],
     ['Research', ['Thesis', 'Evidence', 'Entry Conditions', 'Planned Exit', 'Invalidation', 'Hold Through', 'Avoid']],
-    ['Candidate', ['Long Strike', 'Short Strike', 'Net Debit', 'Number of Contracts', 'Confidence']],
+    ['Candidate', ['Expiration', 'Long Strike', 'Short Strike', 'Net Debit', 'Number of Contracts', 'Confidence']],
   ] as const)('uses the canonical %s section inventory', (title, labels) => {
     const section = IDEA_SECTIONS.find((item) => item.title === title);
     expect(section?.fields.map((field) => field.label)).toEqual(labels);
