@@ -125,6 +125,16 @@ export type ResearchSnapshot = {
   observedAt: string;
   methodology: string;
   values: Record<string, unknown>;
+  provider: string;
+  sourceQuality: SourceQuality;
+  freshness: 'current' | 'delayed' | 'historical' | 'manual';
+  fetchedAt: string;
+  sourceReference?: string;
+  sessionLabel?: 'T-5' | 'T-3' | 'T-1' | 'T0' | 'T+1' | 'T+5';
+  sourceDate?: string;
+  calendarDaysToCatalyst?: number;
+  catalystTimezone?: string;
+  catalystSession?: string;
 };
 
 export type ResearchWorkspace = { id: string; name: string; createdBy: string; updatedAt: string };
