@@ -28,6 +28,7 @@ OJ remains manual and brokerage-independent: no execution, account aggregation, 
 - Privacy scan: pass
 - Dependency audit after patch: 0 vulnerabilities
 - Diff check: pass
+- PL/pgSQL variable-qualification review: pass; table-side Trade IDs are explicitly aliased
 
 The migration SQL tests are included but require a trusted Postgres/Supabase test session. They explicitly cover shared Catalyst provenance, outsider rejection, private lifecycle isolation, and membership removal without historical mutation. Local rendered QA was unavailable because this sandbox forbids local port binding; complete the relay’s exact desktop/mobile acceptance checklist before marking ready.
 

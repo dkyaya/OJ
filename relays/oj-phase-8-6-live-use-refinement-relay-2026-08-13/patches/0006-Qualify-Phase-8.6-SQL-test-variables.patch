@@ -1,0 +1,93 @@
+From dc0ad6b84d57d59b8349c7e6a1d296b8aab8af16 Mon Sep 17 00:00:00 2001
+From: OJ Work Relay <noreply@users.noreply.github.com>
+Date: Thu, 13 Aug 2026 20:42:32 -0400
+Subject: [PATCH] Qualify Phase 8.6 SQL test variables
+
+---
+ ...ase-8-6-research-to-trade-two-user-rls.sql | 47 ++++++++++---------
+ 1 file changed, 25 insertions(+), 22 deletions(-)
+
+diff --git a/supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql b/supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql
+index be1dd9a..c8e9975 100644
+--- a/supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql
++++ b/supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql
+@@ -80,14 +80,15 @@ select public.record_trade_entry_v2(
+ do $$
+ declare trade_id uuid; original_context jsonb;
+ begin
+-  select id,entry_context into trade_id,original_context
+-  from public.trades where trade_idea_id='62000000-0000-0000-0000-000000000002';
++  select trade_record.id,trade_record.entry_context into trade_id,original_context
++  from public.trades trade_record
++  where trade_record.trade_idea_id='62000000-0000-0000-0000-000000000002';
+   perform set_config('oj_test.trade_id',trade_id::text,true);
+   if not exists (
+-    select 1 from public.trades
+-    where id=trade_id
+-      and user_id='61000000-0000-0000-0000-000000000002'
+-      and originating_catalyst_id='65000000-0000-0000-0000-000000000001'
++    select 1 from public.trades trade_record
++    where trade_record.id=trade_id
++      and trade_record.user_id='61000000-0000-0000-0000-000000000002'
++      and trade_record.originating_catalyst_id='65000000-0000-0000-0000-000000000001'
+   ) then raise exception 'User B did not retain private Trade ownership and shared Catalyst provenance'; end if;
+   if original_context->>'originating_catalyst_id'<>'65000000-0000-0000-0000-000000000001' then raise exception 'entry context did not preserve originating Catalyst ID'; end if;
+   if original_context->>'thesis'<>'Original synthetic thesis.' then raise exception 'entry thesis was not captured'; end if;
+@@ -95,10 +96,12 @@ begin
+   perform public.record_trade_checkin(trade_id,'weaker','2026-08-14T14:00:00Z','{"what_changed":"Synthetic change.","price_changed":true,"catalyst_changed":false,"volatility_changed":true,"macro_changed":false,"planned_exit_state":"reassess","invalidation_occurred":false}','Synthetic management revision.');
+   insert into public.journal_reviews(id,trade_idea_id,trade_id,user_id,ratings,data,revision,sync_status)
+   values ('66000000-0000-0000-0000-000000000001','62000000-0000-0000-0000-000000000002',trade_id,'61000000-0000-0000-0000-000000000002','{}','{"reflection":"Private synthetic debrief."}',1,'cloud_draft');
+-  update public.trade_ideas set data=jsonb_set(data,'{Thesis}','"Later synthetic thesis."'),revision=revision+1
+-  where id='62000000-0000-0000-0000-000000000002';
+-  if (select entry_context->>'thesis' from public.trades where id=trade_id)<>'Original synthetic thesis.' then raise exception 'Idea edit rewrote immutable entry thesis'; end if;
+-  if (select status from public.trades where id=trade_id)<>'active' then raise exception 'weaker Thesis Health changed Trade state'; end if;
++  update public.trade_ideas idea_record
++  set data=jsonb_set(idea_record.data,'{Thesis}','"Later synthetic thesis."'),
++      revision=idea_record.revision+1
++  where idea_record.id='62000000-0000-0000-0000-000000000002';
++  if (select trade_record.entry_context->>'thesis' from public.trades trade_record where trade_record.id=trade_id)<>'Original synthetic thesis.' then raise exception 'Idea edit rewrote immutable entry thesis'; end if;
++  if (select trade_record.status from public.trades trade_record where trade_record.id=trade_id)<>'active' then raise exception 'weaker Thesis Health changed Trade state'; end if;
+ end $$;
+ 
+ select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000001',true);
+@@ -128,7 +131,7 @@ begin
+   exception when others then
+     if sqlerrm not like '%originating catalyst access denied%' then raise; end if;
+   end;
+-  if exists (select 1 from public.trade_ideas where id=inaccessible_idea) then raise exception 'blocked User C Idea survived'; end if;
++  if exists (select 1 from public.trade_ideas idea_record where idea_record.id=inaccessible_idea) then raise exception 'blocked User C Idea survived'; end if;
+   begin
+     perform public.record_trade_entry_v2(
+       '62000000-0000-0000-0000-000000000003',null,'pre_catalyst_anticipation',
+@@ -155,20 +158,20 @@ declare trade_id uuid := current_setting('oj_test.trade_id')::uuid;
+ begin
+   if (select count(*) from public.catalysts where id='65000000-0000-0000-0000-000000000001')<>0 then raise exception 'removed User B retained future workspace Catalyst access'; end if;
+   if not exists (
+-    select 1 from public.trades
+-    where id=trade_id
+-      and user_id='61000000-0000-0000-0000-000000000002'
+-      and originating_catalyst_id='65000000-0000-0000-0000-000000000001'
+-      and entry_context->>'originating_catalyst_id'='65000000-0000-0000-0000-000000000001'
++    select 1 from public.trades trade_record
++    where trade_record.id=trade_id
++      and trade_record.user_id='61000000-0000-0000-0000-000000000002'
++      and trade_record.originating_catalyst_id='65000000-0000-0000-0000-000000000001'
++      and trade_record.entry_context->>'originating_catalyst_id'='65000000-0000-0000-0000-000000000001'
+   ) then raise exception 'member removal mutated existing private Trade provenance'; end if;
+-  if (select count(*) from public.trade_entries where trade_id=trade_id)<>1 then raise exception 'member removal corrupted fill history'; end if;
+-  if (select count(*) from public.trade_checkins where trade_id=trade_id)<>1 then raise exception 'member removal corrupted check-in history'; end if;
+-  if (select count(*) from public.journal_reviews where trade_id=trade_id)<>1 then raise exception 'member removal corrupted debrief history'; end if;
++  if (select count(*) from public.trade_entries entry_record where entry_record.trade_id=trade_id)<>1 then raise exception 'member removal corrupted fill history'; end if;
++  if (select count(*) from public.trade_checkins checkin_record where checkin_record.trade_id=trade_id)<>1 then raise exception 'member removal corrupted check-in history'; end if;
++  if (select count(*) from public.journal_reviews review_record where review_record.trade_id=trade_id)<>1 then raise exception 'member removal corrupted debrief history'; end if;
+   if (select private.can_access_catalyst('65000000-0000-0000-0000-000000000001')) then raise exception 'removed User B retained Catalyst authorization'; end if;
+   perform public.record_trade_exit(trade_id,'2026-08-15T14:00:00Z',2.49,'credit',0.50,'target_reached','intact','before catalyst','Synthetic exit.',true);
+-  if (select status from public.trades where id=trade_id)<>'closed' then raise exception 'Trade did not close after membership removal'; end if;
+-  if (select realized_pnl from public.trade_exits where trade_id=trade_id)<>50.00 then raise exception 'realized P/L is incorrect'; end if;
+-  if (select count(*) from public.trades where status='active')<>0 then raise exception 'closed Trade still contributes to open risk'; end if;
++  if (select trade_record.status from public.trades trade_record where trade_record.id=trade_id)<>'closed' then raise exception 'Trade did not close after membership removal'; end if;
++  if (select exit_record.realized_pnl from public.trade_exits exit_record where exit_record.trade_id=trade_id)<>50.00 then raise exception 'realized P/L is incorrect'; end if;
++  if (select count(*) from public.trades trade_record where trade_record.status='active')<>0 then raise exception 'closed Trade still contributes to open risk'; end if;
+ end $$;
+ 
+ reset role;

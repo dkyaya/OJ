@@ -123,7 +123,7 @@ Latest successful application gate:
 - `npm run build` — pass; 1,679 modules transformed
 - `npm run copy:check` — pass
 - `npm run privacy:check` — pass
-- `git diff --check` — pass for the full branch; repository attributes classify mail-format patch bodies separately, and the five-patch series applies cleanly and reproduces the application/migration/documentation source tree
+- `git diff --check` — pass for the full branch; repository attributes classify mail-format patch bodies separately, and the six-patch series applies cleanly and reproduces the application/migration/documentation source tree
 - `npm audit fix` updated transitive `nanoid` from 3.3.17 to patched 3.3.18 and returned **0 vulnerabilities**. A later repeat could not reach the npm audit endpoint due environment DNS; the patched installed and locked version was verified locally.
 
 Build warning: the main JavaScript chunk is about 737 kB minified / 199 kB gzip and exceeds Vite’s 500 kB advisory threshold. This pre-existing performance warning is not a functional failure and should be handled through future route-level code splitting rather than mixed into lifecycle work.
@@ -133,7 +133,7 @@ SQL checks updated:
 - `supabase/tests/phase-8-6-research-to-trade-structure.sql`
 - `supabase/tests/phase-8-6-research-to-trade-two-user-rls.sql`
 
-They were statically reviewed but not executed locally: no Supabase CLI/Postgres runtime was installed, registry access was unavailable, and the production project has no development branch. The production migration ledger was rechecked and correctly remains at Phase 8.5.1. Do not run synthetic acceptance SQL against production. The deploy workflow and post-deploy trusted SQL session remain required.
+They were statically reviewed but not executed locally: no Supabase CLI/Postgres runtime was installed, registry access was unavailable, and the production project has no development branch. The final PL/pgSQL review qualifies every table-side Trade ID used alongside a local `trade_id` variable, including Trade, fill, Check-In, Debrief, and Exit assertions; no `where trade_id = trade_id`-style predicate remains. The production migration ledger was rechecked and correctly remains at Phase 8.5.1. Do not run synthetic acceptance SQL against production. The deploy workflow and post-deploy trusted SQL session remain required.
 
 ## L. Deployment
 
@@ -179,21 +179,17 @@ Functional source commits included by the patch series:
 - `f84c467` — Document Phase 8.6 lifecycle semantics
 - `8e00c55` — Harden lifecycle concurrency checks
 - `a2257e5` — Preserve shared Catalyst Trade provenance
+- `dc0ad6b` — Qualify Phase 8.6 SQL test variables
 
-Source diff from starting main: 32 files, 1,438 insertions, 69 deletions before adding this relay package.
+Source diff from starting main: 32 files, 1,441 insertions, 69 deletions before adding this relay package.
 
-Remote publishing is the only incomplete Git step. The GitHub CLI reports an invalid `dkyaya` token, the terminal cannot currently resolve `github.com`, and the connected GitHub integration can read the repository but cannot create Git trees. No remote branch or PR was fabricated. After CLI authentication/network is restored:
-
-```text
-git push -u origin feature/phase-8-6-live-use-refinement
-gh pr create --draft --base main --head feature/phase-8-6-live-use-refinement --title "Refine OJ’s research-to-trade workflow" --body-file relays/oj-phase-8-6-live-use-refinement-relay-2026-08-13/PR_BODY.md
-```
+The feature branch is published and draft PR #22 is open. This final test-only repair and the repackaged relay are appended to that same draft branch; no second PR is needed.
 
 Recommendation: keep the PR draft until CI, migration review, trusted SQL execution, and rendered breakpoint QA finish. Do not auto-merge.
 
 ## O. Blockers and uncertainties
 
-- Remote branch/PR creation is blocked by GitHub CLI authentication plus terminal DNS. The local branch is committed and ready.
+- GitHub CLI token inspection still reports an invalid token even though the repository’s HTTPS Git credentials can publish the existing branch. PR #22 remains draft and must not be merged automatically.
 - The new migration and synthetic three-user SQL were not executed against Postgres in this run because no local/test database or Supabase development branch was available. Production was intentionally not used as a test environment.
 - The changed frontend could not be rendered locally because the sandbox forbids port binding and direct file navigation. No rendered-QA claim is made.
 - Phase 8.6 supports full exits only. Existing legacy Trades remain readable but cannot retroactively acquire a complete entry-context snapshot without an explicit future correction/migration design.
