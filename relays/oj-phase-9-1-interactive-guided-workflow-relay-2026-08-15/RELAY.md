@@ -10,11 +10,11 @@ Draft PR: [#25 — Add OJ’s adaptive guided product tour](https://github.com/d
 
 ## Status
 
-The Phase 9.1 review addendum is implemented. The original isolated Tutorial Workspace, OJDEMO fixture, bounded preferences, deterministic reconstruction/cleanup, no-write/provider boundary, and nine-stage story remain intact. The Guided Walkthrough no longer owns substitute versions of OJ’s major forms, and the Quick Tour no longer has an intentional-overlap fallback.
+The Phase 9.1 final review addendum is implemented. The original isolated Tutorial Workspace, OJDEMO fixture, bounded preferences, deterministic reconstruction/cleanup, no-write/provider boundary, and nine-stage story remain intact. Shared Record Trade and Exit editors now accept the smallest presentation adapter needed for truthful synthetic confirmations, while their production defaults remain exact. Catalyst Intelligence saves now change Tutorial memory and can no longer report success through a no-op.
 
 - Base/main: `5d96de6d188e07553f3cbdbd546a7fd82e177891`
-- Addendum implementation head: `8311847d278ea303d94a062c2215e16e4bef2e46`
-- Implementation CI: [run 31914587168](https://github.com/dkyaya/OJ/actions/runs/31914587168), all four jobs passed
+- Final addendum implementation head: `d4ebaf11754c49af6f22448cc06c5fde23a864a3`
+- Implementation CI: [run 31915193435](https://github.com/dkyaya/OJ/actions/runs/31915193435), all four jobs passed
 - PR #25 remains draft and unmerged
 - No Supabase migration, Edge Function, private-journal change, provider integration, or brokerage behavior was added
 
@@ -50,7 +50,24 @@ shared production UI
 └── Tutorial adapter → TutorialWorkspace + bundled option fixture
 ```
 
-The Tutorial Catalyst Intelligence view explicitly displays `Tutorial Fixture`, `Synthetic`, and `No provider request made`. Provider refresh/load actions are disabled. Fixture save/review actions resolve only through the injected no-write adapter. The full Guided behavior test completes Catalyst through Insights with zero `fetch` calls, while the structural boundary test rejects imports of production actions, Supabase, collaboration actions, and production provider loaders.
+The Tutorial Catalyst Intelligence view explicitly displays `Tutorial Fixture`, `Synthetic`, and `No provider request made`. Provider refresh/load actions are disabled. Before save, the Tutorial-derived Workspace exposes no Research Ledger snapshot. Either enabled fixture/manual save control invokes the in-memory adapter, flips `tutorialResearchSnapshotSaved`, and exposes one synthetic snapshot to the shared history UI. Success and follow-up copy identify the snapshot as temporary, absent from the production Research Ledger, and cleared with the Tutorial. The full Guided behavior test completes Catalyst through Insights with zero `fetch` calls, while the structural boundary test rejects imports of production actions, Supabase, collaboration actions, and production provider loaders.
+
+## Truthful lifecycle semantics
+
+Production continues to show:
+
+- `I confirm this is an actual fill executed outside OJ.`
+- `I confirm this is the actual full closing transaction.`
+- `Record Exit & Debrief`
+
+Tutorial mode injects truthful equivalents without forking either editor:
+
+- `I understand this is a synthetic fill simulation. OJ did not place an order.`
+- `I understand this is a synthetic closing transaction inside the Tutorial Workspace.`
+- `Record Tutorial Trade`
+- `Record Tutorial Exit`
+
+The separate Tutorial Debrief remains its own following stage. Production validation and canonical action owners are unchanged.
 
 ## Preserved tutorial story
 
@@ -92,7 +109,7 @@ Every returned target-aware placement is inside the safe viewport and non-overla
 
 ## Validation
 
-Final local suite: **59 test files / 271 tests passed**.
+Final local suite: **60 test files / 276 tests passed**.
 
 - typecheck: pass
 - ESLint: pass, zero warnings
@@ -101,9 +118,9 @@ Final local suite: **59 test files / 271 tests passed**.
 - privacy check: pass
 - npm audit at high severity: pass, 0 vulnerabilities
 - `git diff --check`: pass
-- existing Vite advisory remains for the 783.91 kB minified JS chunk (213.10 kB gzip)
+- existing Vite advisory remains for the 786.85 kB minified JS chunk (213.85 kB gzip)
 
-GitHub Actions run `31914587168` passed **OJ Public Validate, OJ Public Test, OJ Public Build, and OJ Public Security**. The runner emitted the existing Node-20-action deprecation annotation for `actions/checkout@v4` / `actions/setup-node@v4`; jobs ran successfully under the forced Node 24 runtime.
+GitHub Actions run `31915193435` passed **OJ Public Validate, OJ Public Test, OJ Public Build, and OJ Public Security**. The runner emitted the existing Node-20-action deprecation annotation for `actions/checkout@v4` / `actions/setup-node@v4`; jobs ran successfully under the forced Node 24 runtime.
 
 ## Browser QA limitation
 
@@ -120,7 +137,7 @@ The relay therefore includes the exact post-deploy eight-viewport acceptance mat
 - `FILES_CHANGED.md`
 - `PRODUCTION_ACCEPTANCE.md`
 - `PR_BODY.md`
-- patch series through the real-UI/no-overlap repair
+- patch series through the final semantic-copy and Tutorial snapshot repair
 
 ## Recommendation
 

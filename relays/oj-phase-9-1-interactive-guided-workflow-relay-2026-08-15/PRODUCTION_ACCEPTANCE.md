@@ -41,16 +41,16 @@ At every size verify no horizontal page overflow, no right-side accidental scrol
 5. Open the Tutorial Catalyst Intelligence stage.
 6. Confirm the 95/100/105 call/put fixture, $100 underlying, ATM/straddle/volatility summaries, `Tutorial Fixture`, `Synthetic`, and `No provider request made`.
 7. Change the Base Scenario price; confirm the illustrative theoretical mark updates and no recommendation/order language appears.
-8. Confirm no MarketData/government-provider request, credit consumption, provider-cache entry, production snapshot, or Research Ledger history.
-9. Build the Tutorial Idea through Setup, Catalyst, and Research; save it. Compare with **New Idea** and confirm the same step navigation, field layout, selectors, and primary controls.
+8. Confirm **Check Provider Status** and **Load Delayed Options** are disabled and there is no Tutorial Research Ledger history before saving. Use **Save Snapshot**; confirm one Tutorial Fixture history entry appears with explicit temporary-session copy. Restart and repeat with **Save 6 Contracts**. Confirm both paths create only Tutorial memory and make no MarketData/government-provider request, credit consumption, provider-cache entry, or production snapshot.
+9. Confirm the saved-snapshot notice says it did not enter the production Research Ledger and will disappear when the Tutorial clears. Build the Tutorial Idea through Setup, Catalyst, and Research; save it. Compare with **New Idea** and confirm the same step navigation, field layout, selectors, and primary controls.
 10. Confirm the page teaches Catalyst=fact, Idea=interpretation, Candidate=planned expression, Trade=what happened elsewhere.
 11. Save the 100/105 Candidate at $1.40 for one contract. Confirm this is the same fourth Candidate section used by the production Idea editor.
 12. Confirm planned width $5, max loss $140, max profit $360, breakeven $101.40.
-13. At Record Trade, confirm the production Phase 8.6 form is recognizable: actual expiration, strikes, contracts, debit, fees, fill time, planned-vs-actual panels, risk capacity, broker boundary, and manual-record acknowledgment. Record $1.32.
+13. At Record Trade, confirm the production Phase 8.6 form is recognizable: actual expiration, strikes, contracts, debit, fees, fill time, planned-vs-actual panels, risk capacity, broker boundary, and checkbox. Confirm Tutorial says `I understand this is a synthetic fill simulation. OJ did not place an order.`, never asks the user to attest an actual fill, and submits as **Record Tutorial Trade**. Record $1.32.
 14. Confirm planned Candidate remains $1.40 while actual Trade is $1.32.
 15. Confirm actual max loss $132, max profit $368, breakeven $101.32.
 16. Confirm Trade detail shows the same structure/thesis/monitoring, planned-vs-actual, catalyst, entry-research, and history sections as a real Trade. Add the Thesis Intact Check-In and confirm it does not appear in the real Journal.
-17. Record the $2.10 exit through the normal full-exit controls and confirm Tutorial P/L is +$78 before fees.
+17. Record the $2.10 exit through the normal full-exit controls and confirm Tutorial P/L is +$78 before fees. Confirm the checkbox identifies a synthetic closing transaction and the action says **Record Tutorial Exit**, not **Record Exit & Debrief**.
 18. Save through the normal Debrief editor/context presentation and reach Insights.
 19. Confirm the actual read-only Insights page is shown against only Tutorial-derived data and is labeled excluded from real analytics.
 20. Finish and confirm Tutorial Workspace clears.
@@ -59,7 +59,7 @@ At every size verify no horizontal page overflow, no right-side accidental scrol
 
 1. Start again, complete several stages, then Pause.
 2. Resume from Settings; confirm deterministic prerequisites return at the current section.
-3. Restart; confirm the old Tutorial objects clear before the fresh Catalyst section.
+3. Restart; confirm the old Tutorial objects, including its saved Research Snapshot, clear before the fresh Catalyst section.
 4. Exit; confirm no Tutorial object remains in production pages.
 5. Start again and sign out; sign in and confirm the in-memory Tutorial session is gone.
 6. Compare real before/after:
