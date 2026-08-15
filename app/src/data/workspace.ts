@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, CatalystDateCertainty, CatalystEventStatus, CatalystScheduleKind, IdeaStatus, JournalRecord, Opportunity, Position, ResearchSnapshot, ResearchSnapshotLifecycleEvent, ResearchSnapshotRemovalReason, ResearchSource, ResearchStage, SnapshotType, SourceQuality, TradeIdea, TradeIdeaCatalystLink, Workspace } from '../types/domain';
+import type { AccountPolicy, AccountProfile, AppPreferences, Candidate, Catalyst, CatalystDateCertainty, CatalystEventStatus, CatalystScheduleKind, ExitReason, IdeaStatus, JournalRecord, Opportunity, Position, ResearchSnapshot, ResearchSnapshotLifecycleEvent, ResearchSnapshotRemovalReason, ResearchSource, ResearchStage, SnapshotType, SourceQuality, ThesisHealth, TradeCheckin, TradeClass, TradeEntryContext, TradeExit, TradeIdea, TradeIdeaCatalystLink, Workspace } from '../types/domain';
 import { demoWorkspace } from './demo';
 import { emptyCollaboration, loadCollaboration } from './collaboration';
 import { persistedSessionUser } from '../lib/session';
@@ -20,6 +20,24 @@ export const emptyWorkspace = (): Workspace => ({
 
 const literal = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => allowed.includes(value as T) ? value as T : fallback;
 
+function mapEntryContext(value: unknown): TradeEntryContext | undefined {
+  const data = record(value);
+  if (Number(data.version) < 1 || !data.idea_id) return undefined;
+  const candidate = record(data.candidate); const actual = record(data.actual); const risk = record(data.risk_policy);
+  const linked = Array.isArray(data.linked_catalysts) ? data.linked_catalysts.map(record).filter((item) => item.catalyst_id).map((item) => ({ catalystId: String(item.catalyst_id), relationship: literal(item.relationship, ['primary','supporting','avoid','exit','context'] as const, 'supporting') })) : [];
+  return {
+    version: Number(data.version), capturedAt: String(data.captured_at || ''), ideaId: String(data.idea_id), ideaRevision: Number(data.idea_revision || 1),
+    ideaStatus: optionalString(data.idea_status), researchStage: data.research_stage ? literal<ResearchStage>(data.research_stage, ['watching','researching','thesis_forming','entry_candidate','entered','exited','reviewed','parked','rejected','no_trade'], 'watching') : undefined,
+    assetType: optionalString(data.asset_type), bias: optionalString(data.bias), thesis: optionalString(data.thesis), evidence: optionalString(data.evidence), entryConditions: optionalString(data.entry_conditions),
+    invalidation: optionalString(data.invalidation), plannedExit: optionalString(data.planned_exit), holdThroughEvents: stringArray(data.hold_through_events), avoidEvents: stringArray(data.avoid_events),
+    candidate: candidate.id ? { id: String(candidate.id), revision: Number(candidate.revision || 1), expiration: optionalString(candidate.expiration), longStrike: number(candidate.long_strike), shortStrike: number(candidate.short_strike), plannedDebit: number(candidate.planned_debit), plannedContracts: number(candidate.planned_contracts), plannedMaxLoss: number(candidate.planned_max_loss), plannedMaxProfit: number(candidate.planned_max_profit), plannedBreakEven: number(candidate.planned_break_even) } : undefined,
+    actual: Object.keys(actual).length ? { expiration: optionalString(actual.expiration), longStrike: number(actual.long_strike), shortStrike: number(actual.short_strike), contracts: Number(actual.contracts || 1), debit: number(actual.debit), fees: number(actual.fees), maxLoss: number(actual.max_loss), maxProfit: number(actual.max_profit), breakEven: number(actual.break_even) } : undefined,
+    originatingCatalystId: optionalString(data.originating_catalyst_id), catalystCluster: optionalString(data.catalyst_cluster), linkedCatalysts: linked, researchSnapshotIds: stringArray(data.research_snapshot_ids), forecastIds: stringArray(data.forecast_ids),
+    tradeClass: data.trade_class ? literal<TradeClass>(data.trade_class, ['pre_catalyst_anticipation','catalyst_hold','post_catalyst_confirmation'], 'pre_catalyst_anticipation') : undefined,
+    exposureTags: stringArray(data.exposure_tags), riskPolicy: Object.keys(risk).length ? { version: number(risk.version), ceiling: number(risk.ceiling), openRiskBefore: number(risk.open_risk_before), projectedOpenRisk: number(risk.projected_open_risk), overshootAcknowledged: Boolean(risk.overshoot_acknowledged), overshootNote: optionalString(risk.overshoot_note) } : undefined,
+  };
+}
+
 function ideaStatus(row: Record<string, unknown>, data: Record<string, unknown>): IdeaStatus {
   const literal = text(row.idea_status || data.Status || data.status).toLowerCase();
   if (['draft','watchlist','ready','deferred','rejected','invalidated'].includes(literal)) return literal as IdeaStatus;
@@ -33,7 +51,7 @@ function mapCandidates(rows: Record<string, unknown>[]): Map<string, Candidate[]
   for (const row of rows) {
     const data = record(row.data);
     const item: Candidate = {
-      id: String(row.id), name: 'Candidate', legacyName: text(data.label || data.Label, text(row.name)) || undefined,
+      id: String(row.id), name: 'Candidate', legacyName: text(data.label || data.Label, text(row.name)) || undefined, revision: Number(row.revision || 1), expiration: optionalString(data.expiration ?? data.Expiration),
       longStrike: number(data.long_strike ?? data['Long strike']), shortStrike: number(data.short_strike ?? data['Short strike']),
       debit: number(data.debit ?? data['Net debit']), contracts: number(data.contracts ?? data.Contracts),
       maxLoss: number(data.max_loss ?? data['Maximum risk'] ?? data['Calculated max loss']), maxProfit: number(data.max_profit ?? data['Calculated max profit']),
@@ -69,7 +87,7 @@ export async function loadWorkspace(): Promise<Workspace> {
   };
   if (!profileRow?.approved || profile.status !== 'active') return { ...emptyWorkspace(), authenticated: true, profile };
 
-  const [ideasResult, candidatesResult, catalystsResult, mappingsResult, linksResult, sourcesResult, snapshotsResult, snapshotLifecycleResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult, collaboration] = await Promise.all([
+  const [ideasResult, candidatesResult, catalystsResult, mappingsResult, linksResult, sourcesResult, snapshotsResult, snapshotLifecycleResult, tradesResult, checkinsResult, exitsResult, reviewsResult, policyResult, preferencesResult, collaboration] = await Promise.all([
     supabase.from('trade_ideas').select('*').order('updated_at', { ascending: false }),
     supabase.from('trade_candidates').select('*').order('updated_at', { ascending: false }),
     supabase.from('catalysts').select('*').is('deleted_at', null).order('event_at', { ascending: true }),
@@ -80,12 +98,13 @@ export async function loadWorkspace(): Promise<Workspace> {
     supabase.from('research_snapshot_lifecycle_events').select('*').order('created_at', { ascending: true }),
     supabase.from('trades').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
     supabase.from('trade_checkins').select('*').order('created_at', { ascending: false }),
+    supabase.from('trade_exits').select('*').order('created_at', { ascending: false }),
     supabase.from('journal_reviews').select('*').order('created_at', { ascending: false }),
     supabase.from('account_policies').select('*').maybeSingle(),
     supabase.from('application_preferences').select('*').maybeSingle(),
     loadCollaboration(user.id),
   ]);
-  const requiredResults = [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, reviewsResult, policyResult, preferencesResult];
+  const requiredResults = [ideasResult, candidatesResult, catalystsResult, mappingsResult, tradesResult, checkinsResult, exitsResult, reviewsResult, policyResult, preferencesResult];
   const firstError = requiredResults.find((result) => result.error)?.error || [linksResult, sourcesResult, snapshotsResult, snapshotLifecycleResult].find((result) => result.error && !migrationPending(result.error))?.error;
   if (firstError) throw new Error(firstError.message);
 
@@ -151,14 +170,28 @@ export async function loadWorkspace(): Promise<Workspace> {
     note: optionalString(row.note), createdAt: String(row.created_at),
   }));
   const { active: researchSnapshots, removed: removedResearchSnapshots } = partitionResearchSnapshots(allResearchSnapshots, snapshotLifecycle);
-  const positions: Position[] = ((tradesResult.data || []) as Record<string, unknown>[]).map((row) => ({
-    id: String(row.id), ideaId: String(row.trade_idea_id), ticker: text(row.ticker, 'TBD'), strategy: text(row.strategy, 'TBD'), status: row.status === 'closed' ? 'closed' : 'active',
-    contracts: Number(row.contracts), maxRisk: number(row.max_risk), openedAt: String(row.opened_at), closedAt: row.closed_at ? String(row.closed_at) : undefined,
-    revision: Number(row.revision || 1), data: record(row.data),
-  }));
+  const checkins: TradeCheckin[] = ((checkinsResult.data || []) as Record<string, unknown>[]).filter((row) => row.trade_id).map((row) => {
+    const data = record(row.data);
+    return { id: String(row.id), tradeId: String(row.trade_id), ideaId: String(row.trade_idea_id), thesisHealth: literal<ThesisHealth>(row.thesis_health, ['stronger','intact','weaker','invalidated'], 'intact'), checkedAt: String(row.checked_at || row.created_at), whatChanged: optionalString(data.what_changed), priceChanged: Boolean(data.price_changed), catalystChanged: Boolean(data.catalyst_changed), volatilityChanged: Boolean(data.volatility_changed), macroChanged: Boolean(data.macro_changed), plannedExitState: literal(data.planned_exit_state, ['still_valid','reassess','changed'] as const, 'still_valid'), invalidationOccurred: Boolean(data.invalidation_occurred), managementView: optionalString(row.current_management_view || data.management_view), notes: optionalString(data.notes), data };
+  });
+  const checkinsByTrade = new Map<string, TradeCheckin[]>();
+  checkins.forEach((checkin) => checkinsByTrade.set(checkin.tradeId, [...(checkinsByTrade.get(checkin.tradeId) || []), checkin].sort((a, b) => b.checkedAt.localeCompare(a.checkedAt))));
+  const exits: TradeExit[] = ((exitsResult.data || []) as Record<string, unknown>[]).filter((row) => row.trade_id).map((row) => {
+    const data = record(row.data);
+    return { id: String(row.id), tradeId: String(row.trade_id), ideaId: String(row.trade_idea_id), exitedAt: String(row.exited_at || row.created_at), contractsExited: Number(row.contracts_exited || 0), exitValue: Number(row.exit_value || 0), exitValueType: row.exit_value_type === 'debit' ? 'debit' : 'credit', fees: Number(row.fees || 0), realizedPnl: Number(row.realized_pnl || 0), exitReason: literal<ExitReason>(row.exit_reason, ['target_reached','thesis_invalidated','catalyst_approaching','risk_reduction','time_decay','volatility_change','better_opportunity','manual_other'], 'manual_other'), thesisHealth: literal<ThesisHealth>(row.thesis_health_at_exit, ['stronger','intact','weaker','invalidated'], 'intact'), catalystRelationship: optionalString(row.catalyst_relationship), notes: optionalString(data.notes), data };
+  });
+  const exitsByTrade = new Map(exits.map((exit) => [exit.tradeId, exit]));
+  const positions: Position[] = ((tradesResult.data || []) as Record<string, unknown>[]).map((row) => {
+    const data = record(row.data); const entryContext = mapEntryContext(row.entry_context); const id = String(row.id);
+    return {
+      id, ideaId: String(row.trade_idea_id), ticker: text(row.ticker, 'TBD'), strategy: text(row.strategy, 'TBD').replaceAll('-', ' '), status: row.status === 'closed' ? 'closed' : 'active',
+      contracts: Number(row.contracts), maxRisk: number(row.max_risk), maxProfit: number(row.max_profit), breakEven: number(row.break_even), expiration: optionalString(row.expiration), longStrike: number(row.long_strike), shortStrike: number(row.short_strike), actualDebit: number(row.actual_debit ?? data.debit), entryFees: Number(row.entry_fees || 0), candidateId: optionalString(row.candidate_id), tradeClass: row.trade_class ? literal<TradeClass>(row.trade_class, ['pre_catalyst_anticipation','catalyst_hold','post_catalyst_confirmation'], 'pre_catalyst_anticipation') : undefined, originatingCatalystId: optionalString(row.originating_catalyst_id), exposureTags: stringArray(row.exposure_tags).length ? stringArray(row.exposure_tags) : entryContext?.exposureTags || [], entryContext, checkins: checkinsByTrade.get(id) || [], exit: exitsByTrade.get(id),
+      openedAt: String(row.opened_at), closedAt: row.closed_at ? String(row.closed_at) : undefined, revision: Number(row.revision || 1), data,
+    };
+  });
   const journal: JournalRecord[] = [
-    ...((checkinsResult.data || []) as Record<string, unknown>[]).map((row) => ({ id: String(row.id), ideaId: String(row.trade_idea_id), kind: 'check-in' as const, createdAt: String(row.created_at), summary: dataText(record(row.data), 'Summary', 'summary', 'Note') || 'Trade check-in', data: record(row.data) })),
-    ...((reviewsResult.data || []) as Record<string, unknown>[]).map((row) => ({ id: String(row.id), ideaId: String(row.trade_idea_id), kind: 'review' as const, createdAt: String(row.created_at), summary: dataText(record(row.data), 'Summary', 'summary', 'Lesson') || 'Trade review', data: record(row.data) })),
+    ...((checkinsResult.data || []) as Record<string, unknown>[]).map((row) => ({ id: String(row.id), ideaId: String(row.trade_idea_id), tradeId: optionalString(row.trade_id), kind: 'check-in' as const, createdAt: String(row.checked_at || row.created_at), summary: dataText(record(row.data), 'what_changed', 'Summary', 'summary', 'Note') || 'Trade check-in', data: record(row.data) })),
+    ...((reviewsResult.data || []) as Record<string, unknown>[]).map((row) => ({ id: String(row.id), ideaId: String(row.trade_idea_id), tradeId: optionalString(row.trade_id), kind: 'review' as const, createdAt: String(row.created_at), summary: dataText(record(row.data), 'Summary', 'summary', 'Lesson') || 'Trade review', data: record(row.data) })),
   ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const policyRow = policyResult.data as Record<string, unknown> | null;
   const policy: AccountPolicy | undefined = policyRow ? {

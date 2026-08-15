@@ -11,7 +11,7 @@ export const demoWorkspace: Workspace = {
     { workspaceId: '80000000-0000-4000-8000-000000000001', userId: '90000000-0000-4000-8000-000000000002', displayName: 'Marcus', initials: 'MK', workspaceRole: 'member', membershipStatus: 'active', joinedAt: '2026-08-10T13:00:00Z' },
   ],
   pendingWorkspaceInvites: [],
-  policy: { totalCapital: 5000, maximumOpenRisk: 500, strategies: ['bull-call-spread', 'bear-put-spread'], effectiveDate: '2026-08-01', version: 1 },
+  policy: { totalCapital: 5000, maximumOpenRisk: 800, strategies: ['bull-call-spread', 'bear-put-spread'], effectiveDate: '2026-08-01', version: 1 },
   preferences: { theme: 'dark', calendarView: 'month', compactCards: false, mobileNavigation: ['/', '/catalysts', '/ideas', '/trades'], data: {}, revision: 1 },
   ideas: [
     {
@@ -19,7 +19,7 @@ export const demoWorkspace: Workspace = {
       thesis: 'Synthetic setup used only for interface validation.', entryConditions: 'Wait for the scheduled release.', invalidation: 'Price holds above the research range.',
       plannedExit: 'Close before expiration.', catalystId: '20000000-0000-4000-8000-000000000001', risk: 80, updatedAt: '2026-08-08T12:00:00Z', revision: 2,
       researchStage: 'entry_candidate', exposureTags: ['broad-index', 'macro-demo'], riskOvershootAcknowledged: false, holdThroughEvents: [], avoidEvents: [],
-      candidates: [{ id: '30000000-0000-4000-8000-000000000001', name: 'Candidate', legacyName: 'Balanced', longStrike: 100, shortStrike: 97, debit: 0.8, contracts: 1, maxLoss: 80, maxProfit: 220, breakEven: 99.2 }], data: {},
+      candidates: [{ id: '30000000-0000-4000-8000-000000000001', name: 'Candidate', legacyName: 'Balanced', revision: 1, expiration: '2026-09-18', longStrike: 100, shortStrike: 97, debit: 0.8, contracts: 1, maxLoss: 80, maxProfit: 220, breakEven: 99.2 }], data: {},
     },
     {
       id: '10000000-0000-4000-8000-000000000002', ticker: 'SAMPLE', strategy: 'Bull Call Spread', bias: 'Bullish', status: 'deferred',

@@ -50,6 +50,7 @@ describe('idea archive presentation', () => {
     const html = renderToStaticMarkup(<IdeasPage workspace={workspace({ archivedIdeas: [] })} onBuildIdea={() => undefined} onSaved={() => undefined} />);
     expect(html).toContain('Edit Idea');
     expect(html).toContain('Idea Editor');
+    expect(html).toContain('Record Trade');
     expect(html).toContain('Exposure Clusters');
     expect(html).toContain('totals intentionally overlap');
   });
@@ -63,7 +64,7 @@ describe('idea archive presentation', () => {
 
   it('explains why trade-backed ideas cannot be archived', () => {
     const idea = demoWorkspace.ideas[0];
-    const position: Position = { id: 'position', ideaId: idea.id, ticker: idea.ticker, strategy: idea.strategy, status: 'closed', contracts: 1, openedAt: '2026-08-01T12:00:00Z', closedAt: '2026-08-02T12:00:00Z', revision: 1, data: {} };
+    const position: Position = { id: 'position', ideaId: idea.id, ticker: idea.ticker, strategy: idea.strategy, status: 'closed', contracts: 1, entryFees: 0, exposureTags: [], checkins: [], openedAt: '2026-08-01T12:00:00Z', closedAt: '2026-08-02T12:00:00Z', revision: 1, data: {} };
     const html = renderToStaticMarkup(<IdeasPage workspace={workspace({ archivedIdeas: [], positions: [position] })} onBuildIdea={() => undefined} onSaved={() => undefined} />);
     expect(html).toContain('Archive unavailable');
     expect(html).toContain('confirmed trade history');

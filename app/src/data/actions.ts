@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { clearDraft, removeOperation } from '../storage/drafts';
-import type { AccountPolicy, CatalystDateCertainty, CatalystScheduleKind, ResearchSnapshotRemovalReason, SnapshotType, SourceQuality } from '../types/domain';
+import type { AccountPolicy, CatalystDateCertainty, CatalystScheduleKind, ExitReason, ResearchSnapshotRemovalReason, SnapshotType, SourceQuality, ThesisHealth, TradeClass } from '../types/domain';
 import { zonedEventIso } from '../lib/date-time';
 
 const httpUrl = (value: string) => {
@@ -27,14 +27,55 @@ export async function saveAccountPolicy(input: AccountPolicy, exists: boolean) {
   const { data, error } = await query.select().maybeSingle(); if (error || !data) throw new Error(error?.message || 'The risk policy changed on another device.'); return data;
 }
 
-export async function recordEntry(input: { ideaId: string; contracts: number; openedAt: string; maxRisk: number; debit?: number; notes?: string; confirmed: boolean }) {
+export async function recordEntry(input: { ideaId: string; candidateId?: string; tradeClass: TradeClass; expiration: string; longStrike: number; shortStrike: number; contracts: number; openedAt: string; actualDebit: number; fees: number; notes?: string; confirmed: boolean; riskAcknowledged: boolean; riskNote?: string }) {
   await approvedUser();
   if (!input.confirmed) throw new Error('Confirm that this is an actual fill.');
-  const { data, error } = await supabase!.rpc('record_trade_entry', {
-    p_trade_idea_id: input.ideaId, p_contracts: input.contracts, p_opened_at: new Date(input.openedAt).toISOString(), p_max_risk: input.maxRisk,
-    p_entry_data: { debit: input.debit ?? null, notes: input.notes || 'TBD' }, p_confirm_actual: input.confirmed,
+  const { data, error } = await supabase!.rpc('record_trade_entry_v2', {
+    p_trade_idea_id: input.ideaId, p_candidate_id: input.candidateId || null, p_trade_class: input.tradeClass, p_expiration: input.expiration,
+    p_long_strike: input.longStrike, p_short_strike: input.shortStrike, p_contracts: input.contracts, p_opened_at: new Date(input.openedAt).toISOString(),
+    p_actual_debit: input.actualDebit, p_fees: input.fees, p_notes: input.notes?.trim() || null, p_confirm_actual: input.confirmed,
+    p_risk_acknowledged: input.riskAcknowledged, p_risk_note: input.riskNote?.trim() || null,
   });
-  if (error) throw error; return String(data);
+  if (error) {
+    if (/record_trade_entry_v2|schema cache|could not find the function/i.test(error.message)) throw new Error('OJ is finishing its research-to-trade database update. Try again after the Supabase workflow completes.');
+    throw error;
+  }
+  return String(data);
+}
+
+export async function saveTradeCheckin(input: {
+  tradeId: string; thesisHealth: ThesisHealth; checkedAt: string; whatChanged?: string; priceChanged: boolean; catalystChanged: boolean;
+  volatilityChanged: boolean; macroChanged: boolean; plannedExitState: 'still_valid' | 'reassess' | 'changed'; invalidationOccurred: boolean; managementView?: string; notes?: string;
+}) {
+  await approvedUser();
+  const { data, error } = await supabase!.rpc('record_trade_checkin', {
+    p_trade_id: input.tradeId, p_thesis_health: input.thesisHealth, p_checked_at: new Date(input.checkedAt).toISOString(),
+    p_changes: { what_changed: input.whatChanged?.trim() || null, price_changed: input.priceChanged, catalyst_changed: input.catalystChanged, volatility_changed: input.volatilityChanged, macro_changed: input.macroChanged, planned_exit_state: input.plannedExitState, invalidation_occurred: input.invalidationOccurred, notes: input.notes?.trim() || null },
+    p_management_view: input.managementView?.trim() || null,
+  });
+  if (error) {
+    if (/record_trade_checkin|schema cache|could not find the function/i.test(error.message)) throw new Error('OJ is finishing its Trade monitoring database update. Try again after the Supabase workflow completes.');
+    throw error;
+  }
+  return String(data);
+}
+
+export async function recordTradeExit(input: {
+  tradeId: string; exitedAt: string; exitValue: number; exitValueType: 'credit' | 'debit'; fees: number; exitReason: ExitReason;
+  thesisHealth: ThesisHealth; catalystRelationship?: string; notes?: string; confirmed: boolean;
+}) {
+  await approvedUser();
+  if (!input.confirmed) throw new Error('Confirm that this is the actual closing transaction.');
+  const { data, error } = await supabase!.rpc('record_trade_exit', {
+    p_trade_id: input.tradeId, p_exited_at: new Date(input.exitedAt).toISOString(), p_exit_value: input.exitValue, p_exit_value_type: input.exitValueType,
+    p_fees: input.fees, p_exit_reason: input.exitReason, p_thesis_health: input.thesisHealth, p_catalyst_relationship: input.catalystRelationship?.trim() || null,
+    p_notes: input.notes?.trim() || null, p_confirm_actual: input.confirmed,
+  });
+  if (error) {
+    if (/record_trade_exit|schema cache|could not find the function/i.test(error.message)) throw new Error('OJ is finishing its Trade exit database update. Try again after the Supabase workflow completes.');
+    throw error;
+  }
+  return String(data);
 }
 
 export function ideaLifecycleError(error: unknown) {
@@ -86,10 +127,10 @@ export async function deleteTradeIdea(input: { ideaId: string; expectedRevision:
   return data;
 }
 
-export async function saveJournalReview(input: { ideaId: string; summary: string; lesson?: string; processRating?: number }) {
+export async function saveJournalReview(input: { ideaId: string; tradeId?: string; summary: string; lesson?: string; processRating?: number; whatWasRight?: string; whatWasWrong?: string; repeat?: string; avoid?: string; catalystOutcome?: string }) {
   const user = await approvedUser();
   const { data, error } = await supabase!.from('journal_reviews').insert({
-    trade_idea_id: input.ideaId, user_id: user.id, ratings: { process: input.processRating ?? null }, data: { Summary: input.summary, Lesson: input.lesson || 'TBD' },
+    trade_idea_id: input.ideaId, trade_id: input.tradeId || null, user_id: user.id, ratings: { process: input.processRating ?? null }, data: { Summary: input.summary, Lesson: input.lesson || 'TBD', 'What was right': input.whatWasRight?.trim() || null, 'What was wrong': input.whatWasWrong?.trim() || null, 'Repeat': input.repeat?.trim() || null, 'Avoid next time': input.avoid?.trim() || null, 'Catalyst outcome': input.catalystOutcome?.trim() || null },
     revision: 1, sync_status: 'cloud_draft', source: 'oj_app',
   }).select().single();
   if (error) throw error; return data;

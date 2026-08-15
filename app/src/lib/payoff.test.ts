@@ -19,6 +19,10 @@ describe('defined-risk spread math', () => {
   });
 
   it('rejects malformed values', () => expect(spreadMetrics('bull-call-spread', 100, 100, 1, 1)).toBeNull());
+  it('rejects a zero debit or debit equal to spread width', () => {
+    expect(spreadMetrics('bull-call-spread', 100, 102, 0, 1)).toBeNull();
+    expect(spreadMetrics('bull-call-spread', 100, 102, 2, 1)).toBeNull();
+  });
 });
 
 describe('portfolio capacity and process', () => {

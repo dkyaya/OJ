@@ -4,7 +4,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { LoadingScreen } from './components/LoadingScreen';
 import { AppShell } from './components/layout/AppShell';
 import { Workflow } from './components/Workflow';
-import { normalizePath, routeMotionDirection, type AppPath, type RouteMotionDirection } from './config/navigation';
+import { navigate, normalizePath, routeMotionDirection, type AppPath, type RouteMotionDirection } from './config/navigation';
 import { loadWorkspace, emptyWorkspace } from './data/workspace';
 import { authModeFromUrl, type AuthMode } from './lib/auth';
 import { remainingSplashTime } from './lib/loading';
@@ -31,7 +31,7 @@ function clearAuthCallback() {
 export default function App() {
   const [route, setRoute] = useState<AppPath>(routeFromHash); const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [routeMotion, setRouteMotion] = useState<RouteMotionDirection>('neutral');
-  const [authMode, setAuthMode] = useState<AuthMode>(() => authModeFromUrl(location.href)); const [workflow, setWorkflow] = useState<'ticker' | 'catalyst' | null>(null); const [dark, setDark] = useState(() => localStorage.getItem('oj-theme') !== 'light');
+  const [authMode, setAuthMode] = useState<AuthMode>(() => authModeFromUrl(location.href)); const [workflow, setWorkflow] = useState<'ticker' | 'catalyst' | null>(null); const [tradeIdeaId, setTradeIdeaId] = useState<string>(); const [journalTradeId, setJournalTradeId] = useState<string>(); const [dark, setDark] = useState(() => localStorage.getItem('oj-theme') !== 'light');
   const splashStartedAt = useRef(performance.now()); const splashCompletionScheduled = useRef(false); const authModeRef = useRef(authMode); const refreshRequest = useRef(0); const routeRef = useRef(route);
   const finishInitialLoad = useCallback(() => {
     if (splashCompletionScheduled.current) return;
@@ -84,9 +84,9 @@ export default function App() {
 
   const page = route === '/' ? <OverviewPage workspace={workspace} onBuildIdea={() => setWorkflow('ticker')} />
     : route === '/catalysts' ? <CatalystsPage workspace={workspace} onSaved={refresh} />
-      : route === '/ideas' ? <IdeasPage workspace={workspace} onBuildIdea={() => setWorkflow('ticker')} onSaved={refresh} />
-        : route === '/trades' ? <TradesPage workspace={workspace} onSaved={refresh} />
-          : route === '/journal' ? <JournalPage workspace={workspace} onSaved={refresh} />
+      : route === '/ideas' ? <IdeasPage workspace={workspace} onBuildIdea={() => setWorkflow('ticker')} onRecordTrade={(idea) => { setTradeIdeaId(idea.id); navigate('/trades'); }} onSaved={refresh} />
+        : route === '/trades' ? <TradesPage workspace={workspace} onSaved={refresh} initialIdeaId={tradeIdeaId} onInitialIdeaConsumed={() => setTradeIdeaId(undefined)} onDebrief={(position) => { setJournalTradeId(position.id); navigate('/journal'); }} />
+          : route === '/journal' ? <JournalPage workspace={workspace} onSaved={refresh} initialTradeId={journalTradeId} onInitialTradeConsumed={() => setJournalTradeId(undefined)} />
             : route === '/insights' ? <InsightsPage workspace={workspace} />
               : route === '/workspace' ? <WorkspacePage workspace={workspace} />
                 : <SettingsPage workspace={workspace} onSaved={refresh} />;
