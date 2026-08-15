@@ -24,4 +24,25 @@ describe('Trade debrief continuity', () => {
     expect(html).toContain('2 entry research references');
     expect(html).toContain('Reflection remains yours to write');
   });
+
+  it('keeps Trade Check-Ins out of the Journal feed while retaining Trade history', () => {
+    const checkinOnlyWorkspace = {
+      ...demoWorkspace,
+      positions: [closedTrade],
+      journal: [{ id: 'legacy-checkin', ideaId: closedTrade.ideaId, tradeId: closedTrade.id, kind: 'check-in' as const, createdAt: '2026-08-13T18:00:00Z', summary: 'Synthetic reassessment.', data: {} }],
+    };
+    const html = renderToStaticMarkup(<JournalPage workspace={checkinOnlyWorkspace} onSaved={() => undefined} />);
+    expect(html).toContain('No Journal Debriefs');
+    expect(html).toContain('Check-Ins remain with each Trade');
+    expect(html).not.toContain('Trade Check-In');
+    expect(html).not.toContain('Synthetic reassessment.');
+  });
+
+  it('still renders a user-authored Trade Debrief', () => {
+    const reviewWorkspace = { ...demoWorkspace, positions: [closedTrade], journal: [{ id: 'review', ideaId: closedTrade.ideaId, tradeId: closedTrade.id, kind: 'review' as const, createdAt: '2026-08-14T15:00:00Z', summary: 'A deliberate process review.', data: {} }] };
+    const html = renderToStaticMarkup(<JournalPage workspace={reviewWorkspace} onSaved={() => undefined} />);
+    expect(html).toContain('Trade Debrief');
+    expect(html).toContain('A deliberate process review.');
+    expect(html).toContain('Linked Trade Story');
+  });
 });

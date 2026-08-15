@@ -32,6 +32,8 @@ OJ does not infer intent from timestamps. Trade detail keeps the original thesis
 
 A Check-In records user-authored Thesis Health—Stronger, Intact, Weaker, or Invalidated—plus a concise change summary, structured price/Catalyst/volatility/macro flags, invalidation state, and an optional current management view. A Check-In never mutates the original plan or automatically closes a Trade.
 
+Check-Ins are monitoring history, not Journal entries. They remain visible in Trade detail, inform the linked Debrief context, and stay in Trade Markdown exports and future lifecycle analytics. The Journal feed and Journal count are built only from completed Trade Debriefs. This is a presentation/query boundary; Phase 9 does not delete, rewrite, or migrate historical Check-In rows.
+
 ## Risk policy
 
 The current deliberate production policy is an **$800 simultaneous open-options maximum-loss ceiling**. It is a ceiling, not a target, and is loaded from `account_policies`; UI components do not hard-code it.
