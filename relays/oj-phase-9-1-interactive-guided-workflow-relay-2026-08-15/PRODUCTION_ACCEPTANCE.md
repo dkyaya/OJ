@@ -15,7 +15,7 @@ Run the critical Quick and Guided checks at:
 - 375×667
 - 320×568
 
-At every size verify no horizontal page overflow, no right-side accidental scrollbar, reachable sticky actions, scrollable tutorial content, safe-area clearance, readable labels, visible focus, and no target/callout overlap.
+At every size verify no horizontal page overflow, no right-side accidental scrollbar, reachable sticky actions, scrollable tutorial content, safe-area clearance, readable labels, visible focus, and no target/callout overlap. At 320×568, explicitly exercise a wide/tall highlighted target and confirm the callout becomes a reduced-height scrollable card without covering any part of the target.
 
 ## Quick Tour
 
@@ -36,23 +36,23 @@ At every size verify no horizontal page overflow, no right-side accidental scrol
 
 1. Start **Guided Walkthrough**.
 2. Confirm `Tutorial`, `Synthetic example`, `Temporary workspace`, and `OJDEMO` are unmistakable.
-3. Create the prefilled Tutorial Catalyst.
+3. Create the prefilled Tutorial Catalyst. Confirm its field order, labels, validation, and primary save control match the normal **Add Catalyst** editor.
 4. Confirm it does not appear in the real Catalysts list after pausing/leaving Tutorial context.
 5. Open the Tutorial Catalyst Intelligence stage.
 6. Confirm the 95/100/105 call/put fixture, $100 underlying, ATM/straddle/volatility summaries, `Tutorial Fixture`, `Synthetic`, and `No provider request made`.
 7. Change the Base Scenario price; confirm the illustrative theoretical mark updates and no recommendation/order language appears.
 8. Confirm no MarketData/government-provider request, credit consumption, provider-cache entry, production snapshot, or Research Ledger history.
-9. Build the Tutorial Idea through Setup, Catalyst, and Research; save it.
+9. Build the Tutorial Idea through Setup, Catalyst, and Research; save it. Compare with **New Idea** and confirm the same step navigation, field layout, selectors, and primary controls.
 10. Confirm the page teaches Catalyst=fact, Idea=interpretation, Candidate=planned expression, Trade=what happened elsewhere.
-11. Save the 100/105 Candidate at $1.40 for one contract.
+11. Save the 100/105 Candidate at $1.40 for one contract. Confirm this is the same fourth Candidate section used by the production Idea editor.
 12. Confirm planned width $5, max loss $140, max profit $360, breakeven $101.40.
-13. At Record Trade, confirm the broker boundary, tick the manual-record acknowledgment, and record $1.32.
+13. At Record Trade, confirm the production Phase 8.6 form is recognizable: actual expiration, strikes, contracts, debit, fees, fill time, planned-vs-actual panels, risk capacity, broker boundary, and manual-record acknowledgment. Record $1.32.
 14. Confirm planned Candidate remains $1.40 while actual Trade is $1.32.
 15. Confirm actual max loss $132, max profit $368, breakeven $101.32.
-16. Add the Thesis Intact Check-In and confirm it does not appear in the real Journal.
-17. Record the $2.10 exit and confirm Tutorial P/L is +$78 before fees.
-18. Save the Tutorial Debrief and reach Insights.
-19. Confirm the Insights card is labeled excluded from real analytics.
+16. Confirm Trade detail shows the same structure/thesis/monitoring, planned-vs-actual, catalyst, entry-research, and history sections as a real Trade. Add the Thesis Intact Check-In and confirm it does not appear in the real Journal.
+17. Record the $2.10 exit through the normal full-exit controls and confirm Tutorial P/L is +$78 before fees.
+18. Save through the normal Debrief editor/context presentation and reach Insights.
+19. Confirm the actual read-only Insights page is shown against only Tutorial-derived data and is labeled excluded from real analytics.
 20. Finish and confirm Tutorial Workspace clears.
 
 ## Lifecycle and safety
