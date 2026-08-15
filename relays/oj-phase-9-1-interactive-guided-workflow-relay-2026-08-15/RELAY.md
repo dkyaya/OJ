@@ -1,8 +1,11 @@
 # OJ Work Relay — Phase 9.1 Interactive Guided Workflow
 
-Date: 2026-08-15  
-Repository: `dkyaya/OJ`  
-Branch: `feature/phase-9-1-guided-workflow`  
+Date: 2026-08-15
+
+Repository: `dkyaya/OJ`
+
+Branch: `feature/phase-9-1-guided-workflow`
+
 Draft PR: [#25 — Add OJ’s adaptive guided product tour](https://github.com/dkyaya/OJ/pull/25)
 
 ## A. Baseline
