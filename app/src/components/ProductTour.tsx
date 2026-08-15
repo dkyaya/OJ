@@ -2,11 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { ArrowLeft, ArrowRight, Check, Compass, X } from 'lucide-react';
 import { catalystHash, navigate } from '../config/navigation';
 import { hasTourArrowModifier, isEditableTourKeyTarget } from '../features/tour/keyboard';
+import { placeTourCallout, type TourRect } from '../features/tour/placement';
 import { productTourSteps, type ProductTourState } from '../features/tour/product-tour';
 
-type TargetBox = { top: number; left: number; width: number; height: number };
-
-function targetBox(element: HTMLElement): TargetBox {
+function targetBox(element: HTMLElement): TourRect {
   const rect = element.getBoundingClientRect();
   const padding = 7;
   return {
@@ -17,7 +16,7 @@ function targetBox(element: HTMLElement): TargetBox {
   };
 }
 
-export function ProductTourInvitation({ busy, onTake, onSkip }: { busy?: boolean; onTake: () => void | Promise<void>; onSkip: () => void | Promise<void> }) {
+export function ProductTourInvitation({ busy, onQuick, onGuided, onSkip }: { busy?: boolean; onQuick: () => void | Promise<void>; onGuided: () => void | Promise<void>; onSkip: () => void | Promise<void> }) {
   const dialog = useRef<HTMLElement>(null);
   const transitionLock = useRef(false);
   const [transitionBusy, setTransitionBusy] = useState(false);
@@ -46,10 +45,11 @@ export function ProductTourInvitation({ busy, onTake, onSkip }: { busy?: boolean
   return <div className="tour-invitation-backdrop" role="presentation">
     <section className="tour-invitation" role="dialog" aria-modal="true" aria-labelledby="tour-invitation-title" aria-describedby="tour-invitation-description" ref={dialog}>
       <span className="tour-invitation-icon" aria-hidden="true"><Compass /></span>
-      <span className="eyebrow">A quick orientation</span>
-      <h2 id="tour-invitation-title">See how OJ fits together</h2>
-      <p id="tour-invitation-description">Take a short, read-only tour of the catalyst-first workflow. It creates no research, consumes no provider credits, and never touches a brokerage.</p>
-      <footer><button disabled={saving} onClick={() => void run(onSkip)}>Skip for Now</button><button className="primary" disabled={saving} onClick={() => void run(onTake)}>{saving ? 'Saving' : 'Take a Tour'} <ArrowRight size={16} /></button></footer>
+      <span className="eyebrow">Choose your orientation</span>
+      <h2 id="tour-invitation-title">Learn OJ your way</h2>
+      <p id="tour-invitation-description">Both options leave real OJ data unchanged. The Guided Walkthrough uses only temporary synthetic Tutorial objects.</p>
+      <div className="tour-mode-choices"><button className="primary" disabled={saving} onClick={() => void run(onQuick)}><span><b>Quick Tour</b><small>See how OJ fits together · about 2 minutes</small></span><ArrowRight size={16} /></button><button disabled={saving} onClick={() => void run(onGuided)}><span><b>Guided Walkthrough</b><small>Practice with a synthetic example · about 5–7 minutes</small></span><ArrowRight size={16} /></button></div>
+      <footer><button className="text-button" disabled={saving} onClick={() => void run(onSkip)}>{saving ? 'Saving' : 'Skip for Now'}</button></footer>
     </section>
   </div>;
 }
@@ -64,10 +64,16 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
   const step = productTourSteps[state.step] || productTourSteps[0];
   const card = useRef<HTMLElement>(null);
   const transitionLock = useRef(false);
-  const [box, setBox] = useState<TargetBox>();
+  const [box, setBox] = useState<TourRect>();
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [viewport, setViewport] = useState(() =>
+    typeof window === 'undefined'
+      ? { width: 1280, height: 800 }
+      : { width: window.innerWidth, height: window.innerHeight },
+  );
+  const [cardHeight, setCardHeight] = useState(280);
 
   const go = useCallback(async (action: () => void | Promise<void>) => {
     if (transitionLock.current) return;
@@ -92,10 +98,19 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
       timer = window.setTimeout(() => setBox(target ? targetBox(target) : undefined), reduced ? 0 : 240);
     };
     timer = window.setTimeout(measure, 20);
-    const refresh = () => { if (target) setBox(targetBox(target)); };
-    window.addEventListener('resize', refresh); window.addEventListener('scroll', refresh, true);
-    return () => { window.clearTimeout(timer); window.removeEventListener('resize', refresh); window.removeEventListener('scroll', refresh, true); };
+    const refreshBox = () => { if (target) setBox(targetBox(target)); };
+    const refreshViewport = () => { setViewport({ width: window.innerWidth, height: window.innerHeight }); refreshBox(); };
+    window.addEventListener('resize', refreshViewport); window.addEventListener('orientationchange', refreshViewport); window.addEventListener('scroll', refreshBox, true);
+    return () => { window.clearTimeout(timer); window.removeEventListener('resize', refreshViewport); window.removeEventListener('orientationchange', refreshViewport); window.removeEventListener('scroll', refreshBox, true); };
   }, [catalystId, step.id, step.route, step.target]);
+
+  useLayoutEffect(() => {
+    const measure = () => { const height = card.current?.getBoundingClientRect().height || 0; if (height > 0) setCardHeight(height); };
+    measure();
+    if (typeof ResizeObserver === 'undefined' || !card.current) return;
+    const observer = new ResizeObserver(measure); observer.observe(card.current);
+    return () => observer.disconnect();
+  }, [message, missing, state.step]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => card.current?.focus(), 0);
@@ -110,19 +125,18 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
     return () => { window.clearTimeout(timer); document.removeEventListener('keydown', keydown); };
   }, [go, onPause, onStep, state.step]);
 
-  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth; const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight;
-  const cardWidth = Math.min(380, Math.max(280, viewportWidth - 32));
-  const left = box ? Math.max(16, Math.min(viewportWidth - cardWidth - 16, box.left + box.width / 2 - cardWidth / 2)) : (viewportWidth - cardWidth) / 2;
-  const placeBelow = Boolean(box && box.top + box.height < viewportHeight * .58);
-  const top = box ? (placeBelow ? Math.min(viewportHeight - 300, box.top + box.height + 14) : Math.max(16, box.top - 292)) : Math.max(16, (viewportHeight - 280) / 2);
-  const style = { '--tour-card-left': `${left}px`, '--tour-card-top': `${top}px`, '--tour-card-width': `${cardWidth}px` } as CSSProperties;
+  const mobile = viewport.width <= 700;
+  const margin = mobile ? 10 : 16;
+  const cardWidth = Math.min(380, Math.max(280, viewport.width - margin * 2));
+  const placement = placeTourCallout({ viewport, target: box, card: { width: cardWidth, height: Math.min(cardHeight, viewport.height - margin * 2) }, margin, mobile });
+  const style = { '--tour-card-left': `${placement.left}px`, '--tour-card-top': `${placement.top}px`, '--tour-card-width': `${cardWidth}px`, '--tour-card-max-height': `${placement.height}px` } as CSSProperties;
   const highlight = box ? { top: box.top, left: box.left, width: box.width, height: box.height } : undefined;
   const finalStep = state.step === productTourSteps.length - 1;
 
   return <div className="product-tour-layer" data-missing-target={missing ? 'true' : undefined} style={style}>
     <div className="product-tour-wash" aria-hidden="true" />
     {highlight && <div className="product-tour-highlight" aria-hidden="true" style={highlight} />}
-    <section className="product-tour-card" role="dialog" aria-modal="false" aria-labelledby="product-tour-title" aria-describedby="product-tour-description" tabIndex={-1} ref={card}>
+    <section className="product-tour-card" data-placement={placement.placement} role="dialog" aria-modal="false" aria-labelledby="product-tour-title" aria-describedby="product-tour-description" tabIndex={-1} ref={card}>
       <header><div><span className="eyebrow">{step.eyebrow}</span><span className="tour-progress">{state.step + 1} / {productTourSteps.length}</span></div><button className="icon-button" aria-label="Pause product tour" disabled={busy} onClick={() => void go(onPause)}><X size={18} /></button></header>
       <div className="tour-progress-track" aria-hidden="true"><span style={{ width: `${((state.step + 1) / productTourSteps.length) * 100}%` }} /></div>
       <h2 id="product-tour-title">{step.title}</h2>

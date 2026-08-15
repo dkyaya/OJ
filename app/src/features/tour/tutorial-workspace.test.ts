@@ -64,6 +64,7 @@ describe('isolated Tutorial Workspace', () => {
     const sources = [
       readFileSync(new URL('./tutorial-workspace.ts', import.meta.url), 'utf8'),
       readFileSync(new URL('./tutorial-fixtures.ts', import.meta.url), 'utf8'),
+      readFileSync(new URL('../../components/GuidedWalkthrough.tsx', import.meta.url), 'utf8'),
     ].join('\n');
     for (const forbidden of [
       'data/actions', 'collaboration-actions', 'lib/supabase', 'saveCatalystRecord', 'saveTradeIdea', 'saveTradeCandidate',

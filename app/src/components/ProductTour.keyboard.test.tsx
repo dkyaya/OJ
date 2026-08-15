@@ -148,10 +148,11 @@ describe('Product Tour keyboard safety', () => {
   it('serializes the first-use Take and Skip actions', async () => {
     let settle!: () => void;
     const pending = new Promise<void>((resolve) => { settle = resolve; });
-    const onTake = vi.fn(() => pending);
+    const onQuick = vi.fn(() => pending);
+    const onGuided = vi.fn();
     const onSkip = vi.fn();
     await act(async () => {
-      root.render(<ProductTourInvitation onTake={onTake} onSkip={onSkip} />);
+      root.render(<ProductTourInvitation onQuick={onQuick} onGuided={onGuided} onSkip={onSkip} />);
     });
     const take = container.querySelector<HTMLButtonElement>('button.primary');
     const skip = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes('Skip'));
@@ -161,7 +162,8 @@ describe('Product Tour keyboard safety', () => {
       take.click();
       skip.click();
     });
-    expect(onTake).toHaveBeenCalledTimes(1);
+    expect(onQuick).toHaveBeenCalledTimes(1);
+    expect(onGuided).not.toHaveBeenCalled();
     expect(onSkip).not.toHaveBeenCalled();
 
     await act(async () => { settle(); await pending; });

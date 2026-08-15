@@ -5,11 +5,12 @@ import { ProductTour, ProductTourInvitation } from './ProductTour';
 
 describe('product tour presentation', () => {
   it('offers explicit first-use consent without implying a domain write', () => {
-    const html = renderToStaticMarkup(<ProductTourInvitation onTake={() => undefined} onSkip={() => undefined} />);
-    expect(html).toContain('Take a Tour');
+    const html = renderToStaticMarkup(<ProductTourInvitation onQuick={() => undefined} onGuided={() => undefined} onSkip={() => undefined} />);
+    expect(html).toContain('Quick Tour');
+    expect(html).toContain('Guided Walkthrough');
     expect(html).toContain('Skip for Now');
-    expect(html).toContain('creates no research');
-    expect(html).toContain('never touches a brokerage');
+    expect(html).toContain('real OJ data unchanged');
+    expect(html).toContain('temporary synthetic Tutorial objects');
   });
 
   it('renders bounded navigation and lifecycle separation copy', () => {
