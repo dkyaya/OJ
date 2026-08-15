@@ -13,4 +13,12 @@ describe('settings mobile navigation preferences', () => {
     expect(markup).toContain('aria-label="Mobile navigation preview"');
     expect(markup).toContain('4 + More');
   });
+
+  it('offers versioned tour guidance and replay without using a primary navigation slot', () => {
+    const markup = renderToStaticMarkup(<SettingsPage workspace={demoWorkspace} onSaved={() => undefined} />);
+    expect(markup).toContain('data-tour-id="tour-guidance"');
+    expect(markup).toContain('Guidance');
+    expect(markup).toContain('Take Product Tour');
+    expect(markup).toContain('fetching provider data');
+  });
 });
