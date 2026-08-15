@@ -1,0 +1,33 @@
+From 25e5203a49b6b9a070038724f638f96a5ac8ce47 Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Sat, 15 Aug 2026 17:12:35 -0400
+Subject: [PATCH 1/4] Stabilize Overview catalyst test clock
+
+---
+ app/src/pages/OverviewPage.test.tsx | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/app/src/pages/OverviewPage.test.tsx b/app/src/pages/OverviewPage.test.tsx
+index 4afaf77..839fbae 100644
+--- a/app/src/pages/OverviewPage.test.tsx
++++ b/app/src/pages/OverviewPage.test.tsx
+@@ -1,10 +1,15 @@
+ import { renderToStaticMarkup } from 'react-dom/server';
+-import { describe, expect, it } from 'vitest';
++import { afterEach, describe, expect, it, vi } from 'vitest';
+ import { demoWorkspace } from '../data/demo';
+ import { OverviewPage } from './OverviewPage';
+ 
+ describe('Overview catalyst references', () => {
++  afterEach(() => vi.useRealTimers());
++
+   it('links an upcoming event to its official document and keeps War Room access separate', () => {
++    vi.useFakeTimers();
++    vi.setSystemTime(new Date('2026-08-13T12:00:00Z'));
++
+     const workspace = {
+       ...demoWorkspace,
+       catalysts: demoWorkspace.catalysts.map((catalyst, index) => index === 0
+-- 
+2.50.1 (Apple Git-155)
+

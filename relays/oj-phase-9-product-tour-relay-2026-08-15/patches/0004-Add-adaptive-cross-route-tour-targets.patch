@@ -1,0 +1,282 @@
+From a742e5c8ab19a65ec23aebf88c3fce88a2b060b7 Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Sat, 15 Aug 2026 17:49:30 -0400
+Subject: [PATCH 4/4] Add adaptive cross-route tour targets
+
+---
+ app/src/components/CatalystWarRoom.tsx        |  2 +-
+ .../tour/product-tour-targets.test.tsx        | 49 ++++++++++++++++
+ app/src/pages/CatalystsPage.tsx               |  4 +-
+ app/src/pages/IdeasPage.tsx                   |  4 +-
+ app/src/pages/InsightsPage.tsx                |  2 +-
+ app/src/pages/OverviewPage.tsx                |  4 +-
+ app/src/pages/TradesPage.tsx                  |  6 +-
+ docs/INTERACTION_WORKFLOW.md                  |  2 +
+ docs/NAVIGATION_ARCHITECTURE.md               |  6 +-
+ docs/PRODUCT_TOUR.md                          | 57 +++++++++++++++++++
+ docs/SUPABASE_ARCHITECTURE.md                 |  4 ++
+ 11 files changed, 127 insertions(+), 13 deletions(-)
+ create mode 100644 app/src/features/tour/product-tour-targets.test.tsx
+ create mode 100644 docs/PRODUCT_TOUR.md
+
+diff --git a/app/src/components/CatalystWarRoom.tsx b/app/src/components/CatalystWarRoom.tsx
+index ffc647d..416823f 100644
+--- a/app/src/components/CatalystWarRoom.tsx
++++ b/app/src/components/CatalystWarRoom.tsx
+@@ -73,7 +73,7 @@ export function CatalystWarRoom({ catalyst, workspace, onBack, onSaved }: { cata
+   const [section, setSection] = useState<Section>('summary'); const [message, setMessage] = useState('');
+   const mission = workspace.missions.find((item) => item.catalystId === catalyst.id); const counts = useMemo(() => ({ evidence: workspace.evidence.filter((item) => item.catalystId === catalyst.id).length, viewpoints: workspace.forecasts.filter((item) => item.catalystId === catalyst.id && item.visibility === 'workspace').length }), [catalyst.id, workspace.evidence, workspace.forecasts]);
+   const relatedIdeas = workspace.ideas.filter((idea) => idea.catalystId === catalyst.id || workspace.ideaCatalystLinks.some((link) => link.catalystId === catalyst.id && link.tradeIdeaId === idea.id));
+-  return <div className="page war-room"><button className="text-button back-link" onClick={onBack}><ArrowLeft size={16} />Back to Calendar</button><header className="page-header"><div><span className="eyebrow">Catalyst War Room</span><h1>{catalyst.event}</h1><p>Research, forecasts, and market impact.</p></div><div className="war-room-meta"><span className="status">{catalyst.visibility === 'workspace' ? 'Shared' : 'Private'}</span><span>{catalyst.date || 'Date TBD'}</span></div></header><ErrorMessage message={message} />
++  return <div className="page war-room" data-tour-id="catalyst-war-room"><button className="text-button back-link" onClick={onBack}><ArrowLeft size={16} />Back to Calendar</button><header className="page-header"><div><span className="eyebrow">Catalyst War Room</span><h1>{catalyst.event}</h1><p>Research, forecasts, and market impact.</p></div><div className="war-room-meta"><span className="status">{catalyst.visibility === 'workspace' ? 'Shared' : 'Private'}</span><span>{catalyst.date || 'Date TBD'}</span></div></header><ErrorMessage message={message} />
+     <nav className="section-tabs war-room-tabs" aria-label="Catalyst research sections">{(['summary','intelligence','evidence','mission','forecasts','debrief'] as Section[]).map((item) => <button key={item} className={section === item ? 'active' : ''} aria-current={section === item ? 'page' : undefined} onClick={() => setSection(item)}>{item === 'evidence' ? `Evidence ${counts.evidence}` : item === 'forecasts' ? `Viewpoints ${counts.viewpoints}` : item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
+     {section === 'summary' && <div className="war-room-summary">
+       <div className="war-room-grid"><SummaryCard title="Schedule" subtitle={`${catalyst.category || catalyst.type} · ${catalyst.scheduleKind}`} status={catalyst.dateCertainty} metric={catalyst.date || 'Contextual risk'} meta={catalyst.date ? `${catalyst.scheduledTime || 'Time TBD'} ${catalyst.timezoneName} · ${catalyst.marketSession.replaceAll('_', ' ')}` : 'No false calendar date'} /><SummaryCard title="Market Map" subtitle="Shared factual exposure" status="Shared" metric={catalyst.linkedTickers.length || 0} meta={catalyst.linkedTickers.join(', ') || 'No securities mapped'} /><SummaryCard title="Research Mission" subtitle="Structured event research" status={mission?.status || 'Not started'} metric={mission ? workspace.missionCheckpoints.filter((item) => item.missionId === mission.id && item.status === 'completed').length : 0} meta="Completed checkpoints" /></div>
+diff --git a/app/src/features/tour/product-tour-targets.test.tsx b/app/src/features/tour/product-tour-targets.test.tsx
+new file mode 100644
+index 0000000..d30fc80
+--- /dev/null
++++ b/app/src/features/tour/product-tour-targets.test.tsx
+@@ -0,0 +1,49 @@
++import { renderToStaticMarkup } from 'react-dom/server';
++import { describe, expect, it } from 'vitest';
++import { CatalystWarRoom } from '../../components/CatalystWarRoom';
++import { emptyWorkspace } from '../../data/workspace';
++import { demoWorkspace } from '../../data/demo';
++import { CatalystsPage } from '../../pages/CatalystsPage';
++import { IdeasPage } from '../../pages/IdeasPage';
++import { InsightsPage } from '../../pages/InsightsPage';
++import { JournalPage } from '../../pages/JournalPage';
++import { OverviewPage } from '../../pages/OverviewPage';
++import { SettingsPage } from '../../pages/SettingsPage';
++import { TradesPage } from '../../pages/TradesPage';
++
++const noop = () => undefined;
++
++describe('product tour semantic targets', () => {
++  it('keeps route anchors stable for populated accounts', () => {
++    const pages = [
++      renderToStaticMarkup(<OverviewPage workspace={demoWorkspace} onBuildIdea={noop} />),
++      renderToStaticMarkup(<CatalystsPage workspace={demoWorkspace} onSaved={noop} />),
++      renderToStaticMarkup(<CatalystWarRoom catalyst={demoWorkspace.catalysts[0]} workspace={demoWorkspace} onBack={noop} onSaved={noop} />),
++      renderToStaticMarkup(<IdeasPage workspace={demoWorkspace} onBuildIdea={noop} onSaved={noop} />),
++      renderToStaticMarkup(<TradesPage workspace={demoWorkspace} onSaved={noop} onDebrief={noop} />),
++      renderToStaticMarkup(<JournalPage workspace={demoWorkspace} onSaved={noop} />),
++      renderToStaticMarkup(<InsightsPage workspace={demoWorkspace} />),
++      renderToStaticMarkup(<SettingsPage workspace={demoWorkspace} onSaved={noop} />),
++    ].join('\n');
++    for (const target of ['overview-shell','overview-risk','catalyst-calendar','catalyst-war-room','ideas-shell','idea-candidates','record-trade-action','trade-monitoring','journal-debriefs','insights-shell','tour-guidance']) {
++      expect(pages).toContain(`data-tour-id="${target}"`);
++    }
++  });
++
++  it('keeps empty-account route anchors while allowing example-dependent fallback', () => {
++    const empty = { ...emptyWorkspace(), authenticated: true, approved: true, profile: demoWorkspace.profile };
++    const pages = [
++      renderToStaticMarkup(<OverviewPage workspace={empty} onBuildIdea={noop} />),
++      renderToStaticMarkup(<CatalystsPage workspace={empty} onSaved={noop} />),
++      renderToStaticMarkup(<IdeasPage workspace={empty} onBuildIdea={noop} onSaved={noop} />),
++      renderToStaticMarkup(<TradesPage workspace={empty} onSaved={noop} onDebrief={noop} />),
++      renderToStaticMarkup(<JournalPage workspace={empty} onSaved={noop} />),
++      renderToStaticMarkup(<InsightsPage workspace={empty} />),
++      renderToStaticMarkup(<SettingsPage workspace={empty} onSaved={noop} />),
++    ].join('\n');
++    for (const target of ['overview-shell','overview-risk','catalyst-calendar','ideas-shell','record-trade-action','trade-monitoring','journal-debriefs','insights-shell','tour-guidance']) {
++      expect(pages).toContain(`data-tour-id="${target}"`);
++    }
++    expect(pages).not.toContain('data-tour-id="idea-candidates"');
++  });
++});
+diff --git a/app/src/pages/CatalystsPage.tsx b/app/src/pages/CatalystsPage.tsx
+index de04cb5..f1c6783 100644
+--- a/app/src/pages/CatalystsPage.tsx
++++ b/app/src/pages/CatalystsPage.tsx
+@@ -44,12 +44,12 @@ export function CatalystsPage({ workspace, onSaved }: { workspace: Workspace; on
+   const closeCatalyst = () => { setSelectedId(''); navigate('/catalysts'); };
+   const selected = workspace.catalysts.find((item) => item.id === selectedId);
+   if (selected) return <CatalystWarRoom catalyst={selected} workspace={workspace} onBack={closeCatalyst} onSaved={onSaved} />;
+-  return <div className="page"><PageHeader title="Catalysts" subtitle="Scheduled events and market impact." action={<button className="primary" onClick={() => setAdding(!adding)}><Plus size={17} />Add Catalyst</button>} />
++  return <div className="page" data-tour-id="catalysts-shell"><PageHeader title="Catalysts" subtitle="Scheduled events and market impact." action={<button className="primary" onClick={() => setAdding(!adding)}><Plus size={17} />Add Catalyst</button>} />
+     {adding && <section className="card inline-form"><header><h2>Add Catalyst</h2><p>Scheduled releases receive a verified time. Contextual risks remain off the calendar until a real date exists.</p></header><div className="form-grid"><label><span>Event</span><input value={form.event} onChange={(event) => setForm({ ...form, event: event.target.value })} /></label><label><span>Schedule type</span><select value={form.scheduleKind} onChange={(event) => setForm({ ...form, scheduleKind: event.target.value as CatalystScheduleKind })}><option value="scheduled">Scheduled event</option><option value="contextual">Contextual risk</option></select></label>{form.scheduleKind === 'scheduled' && <><label><span>Date</span><input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label><label><span>Release Time</span><input type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} /></label><label><span>Timezone</span><select value={form.timezoneName} onChange={(event) => setForm({ ...form, timezoneName: event.target.value })}><option>America/New_York</option><option>UTC</option></select></label><label><span>Session</span><select value={form.marketSession} onChange={(event) => setForm({ ...form, marketSession: event.target.value as typeof form.marketSession })}><option value="pre_market">Pre-market</option><option value="regular">Regular hours</option><option value="after_hours">After hours</option><option value="all_day">All day</option></select></label><label><span>Date certainty</span><select value={form.dateCertainty} onChange={(event) => setForm({ ...form, dateCertainty: event.target.value as CatalystDateCertainty })}>{['confirmed','estimated','unconfirmed'].map((item) => <option key={item}>{item}</option>)}</select></label></>}<label><span>Category</span><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>{['Employment','Inflation','Central bank','Earnings','Policy','Other'].map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Sensitivity</span><select value={form.sensitivity} onChange={(event) => setForm({ ...form, sensitivity: event.target.value })}>{['Low','Medium','High'].map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Source name</span><input value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })} /></label><label><span>Source quality</span><select value={form.sourceQuality} onChange={(event) => setForm({ ...form, sourceQuality: event.target.value as SourceQuality })}>{['official','primary','secondary','unverified'].map((item) => <option key={item}>{item}</option>)}</select></label><label className="wide"><span>Source URL</span><input type="url" value={form.sourceUrl} onChange={(event) => setForm({ ...form, sourceUrl: event.target.value })} /></label><label><span>Consensus</span><input value={form.consensus} onChange={(event) => setForm({ ...form, consensus: event.target.value })} /></label><label><span>Prior</span><input value={form.prior} onChange={(event) => setForm({ ...form, prior: event.target.value })} /></label><label className="wide"><span>Why it matters</span><textarea value={form.whyMatters} onChange={(event) => setForm({ ...form, whyMatters: event.target.value })} /></label><label><span>Key variables</span><textarea value={form.keyVariables} onChange={(event) => setForm({ ...form, keyVariables: event.target.value })} /></label><label><span>Tags</span><input value={form.tags} placeholder="macro, earnings" onChange={(event) => setForm({ ...form, tags: event.target.value })} /></label><label className="wide"><span>Cluster</span><input value={form.cluster} placeholder="Optional correlation cluster" onChange={(event) => setForm({ ...form, cluster: event.target.value })} /></label></div><footer><button onClick={() => setAdding(false)}>Cancel</button><button className="primary" disabled={saving || !form.event || (form.scheduleKind === 'scheduled' && (!form.date || !form.time)) || !workspace.approved} onClick={() => void save()}>{saving ? 'Saving' : 'Save Catalyst'}</button></footer></section>}
+     {message && <p className="page-message" role="status">{message}</p>}
+     <div className="section-tabs" role="tablist">{(['calendar','radar','mappings'] as Tab[]).map((item) => <button key={item} role="tab" aria-selected={tab === item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item === 'calendar' ? 'Calendar' : item === 'radar' ? '30-Day Radar' : 'Mappings'}</button>)}</div>
+     <details className="card catalyst-filters"><summary>Research filters <span>{filteredCatalysts.length} of {workspace.catalysts.length}</span></summary><div><div className="horizon-filter" role="group" aria-label="Catalyst horizon">{([3,7,14,30,'all'] as const).map((item) => <button key={item} className={filters.horizon === item ? 'active' : ''} aria-pressed={filters.horizon === item} onClick={() => setFilters({ ...filters, horizon: item })}>{item === 'all' ? 'All dates' : `${item} days`}</button>)}</div><label><span>Category</span><select value={filters.category} onChange={(event) => setFilters({ ...filters, category: event.target.value })}><option value="all">All categories</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Certainty</span><select value={filters.certainty} onChange={(event) => setFilters({ ...filters, certainty: event.target.value as CatalystFilters['certainty'] })}><option value="all">Any certainty</option>{['confirmed','estimated','unconfirmed','contextual'].map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Ticker</span><input value={filters.ticker} placeholder="SPY" onChange={(event) => setFilters({ ...filters, ticker: event.target.value })} /></label><label><span>Cluster</span><input value={filters.cluster} placeholder="macro" onChange={(event) => setFilters({ ...filters, cluster: event.target.value })} /></label></div></details>
+-    {tab === 'calendar' && <><div className="calendar-toolbar"><div><button onClick={() => move(-1)} aria-label={`Previous ${view}`}>‹</button><strong>{title}</strong><button onClick={() => move(1)} aria-label={`Next ${view}`}>›</button><button onClick={() => setFocus(new Date())}>Today</button></div><div role="group" aria-label="Calendar view">{(['month','week','day'] as View[]).map((item) => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div></div><section className="card calendar-card">{view === 'month' ? <MonthCalendar focus={focus} catalysts={filteredCatalysts} onOpen={openCatalyst} /> : <Agenda focus={focus} catalysts={filteredCatalysts} view={view} onOpen={openCatalyst} />}</section><div className="calendar-legend"><span className="macro">Macro / Jobs</span><span className="inflation">Inflation</span><span className="policy">Policy</span><span className="earnings">Earnings</span></div></>}
++    {tab === 'calendar' && <div data-tour-id="catalyst-calendar"><div className="calendar-toolbar"><div><button onClick={() => move(-1)} aria-label={`Previous ${view}`}>‹</button><strong>{title}</strong><button onClick={() => move(1)} aria-label={`Next ${view}`}>›</button><button onClick={() => setFocus(new Date())}>Today</button></div><div role="group" aria-label="Calendar view">{(['month','week','day'] as View[]).map((item) => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div></div><section className="card calendar-card">{view === 'month' ? <MonthCalendar focus={focus} catalysts={filteredCatalysts} onOpen={openCatalyst} /> : <Agenda focus={focus} catalysts={filteredCatalysts} view={view} onOpen={openCatalyst} />}</section><div className="calendar-legend"><span className="macro">Macro / Jobs</span><span className="inflation">Inflation</span><span className="policy">Policy</span><span className="earnings">Earnings</span></div></div>}
+     {tab === 'radar' && (upcoming.length ? <div className="three-grid">{upcoming.map((item) => <SummaryCard key={item.id} title={<CatalystSourceLink source={item.source}>{item.event}</CatalystSourceLink>} subtitle={item.category || item.type} status={item.visibility === 'workspace' ? 'Shared' : item.sensitivity || 'TBD'} metric={item.date || 'Date TBD'} meta={`${workspace.evidence.filter((evidence) => evidence.catalystId === item.id).length} evidence · ${workspace.forecasts.filter((forecast) => forecast.catalystId === item.id && forecast.visibility === 'workspace').length} viewpoints`} action={<div className="action-row"><button className="icon-text" onClick={() => openCatalyst(item)}>Open War Room</button><button className="icon-text" onClick={() => downloadText(`${item.event.replace(/\W+/g, '-')}.md`, catalystMarkdown(item))}><Download size={15} />Export</button></div>} />)}</div> : <EmptyCard title="No Scheduled Events" subtitle="Research only appears after a date and source are recorded." />)}
+     {tab === 'mappings' && (workspace.opportunities.length ? <div className="three-grid">{workspace.opportunities.map((item) => <SummaryCard key={item.id} title={item.ticker} subtitle={item.exposure} status={item.sensitivity || 'TBD'} metric={workspace.catalysts.find((event) => event.id === item.catalystId)?.event || 'Unlinked event'} meta={item.rationale || 'Rationale TBD'} />)}</div> : <EmptyCard title="No Security Mappings" subtitle="Map securities after a catalyst is scheduled." />)}
+   </div>;
+diff --git a/app/src/pages/IdeasPage.tsx b/app/src/pages/IdeasPage.tsx
+index b64fdea..4eaf2ad 100644
+--- a/app/src/pages/IdeasPage.tsx
++++ b/app/src/pages/IdeasPage.tsx
+@@ -141,11 +141,11 @@ export function IdeasPage({ workspace, onBuildIdea, onRecordTrade, onSaved, init
+     } finally { setBusyIdeaId(''); }
+   };
+ 
+-  return <div className="page"><PageHeader title="Ideas" subtitle="Research and compare trade setups." action={<button className="primary" onClick={onBuildIdea}><Plus size={17} />Build Idea</button>} />
++  return <div className="page" data-tour-id="ideas-shell"><PageHeader title="Ideas" subtitle="Research and compare trade setups." action={<button className="primary" onClick={onBuildIdea}><Plus size={17} />Build Idea</button>} />
+     <div className="filter-bar" role="group" aria-label="Idea status">{filters.map((item) => <button key={item} className={filter === item ? 'active' : ''} aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
+     {exposure.size > 0 && <section className="card exposure-summary"><header><div><span className="eyebrow">Portfolio context</span><h2>Exposure Clusters</h2></div><p>Active maximum risk may appear in more than one tag; totals intentionally overlap.</p></header><div>{[...exposure.entries()].sort((a, b) => b[1].risk - a[1].risk).map(([tag, values]) => <article key={tag}><b>{tag}</b><strong>${values.risk.toFixed(2)}</strong><span>{values.active} active · {values.ideas} research {values.ideas === 1 ? 'path' : 'paths'}</span></article>)}</div></section>}
+     {message && <p className="page-message" role="status" aria-live="polite">{message}</p>}
+-    {ideas.length ? <div className="idea-list">{ideas.map((idea) => {
++    {ideas.length ? <div className="idea-list" data-tour-id="idea-candidates">{ideas.map((idea) => {
+       const archived = Boolean(idea.archivedAt); const tradeBacked = workspace.positions.some((item) => item.ideaId === idea.id); const deleteBlocked = tradeBacked || workspace.journal.some((item) => item.ideaId === idea.id); const busy = busyIdeaId === idea.id;
+       const action = archived ? <div className="lifecycle-card-actions"><button className="icon-text restore-action" disabled={busy} onClick={() => void changeLifecycle(idea, false)}><ArchiveRestore size={15} />{busy ? 'Restoring…' : 'Restore'}</button><button className="icon-text" onClick={() => exportIdea(idea, workspace)}><Download size={15} />Export</button></div> : <button className="icon-text" onClick={() => exportIdea(idea, workspace)}><Download size={15} />Export</button>;
+       return <div className={`object-stack${archived ? ' archived-idea' : ''}`} key={idea.id}><SummaryCard title={idea.ticker} subtitle={idea.strategy} status={archived ? 'Archived' : idea.status} metric={idea.risk === undefined ? 'Risk TBD' : `$${idea.risk.toFixed(2)} risk`} meta={archived ? `Archived ${new Date(idea.archivedAt!).toLocaleDateString()} · r${idea.revision}` : `${idea.bias} · ${idea.status} · r${idea.revision}`} action={action} />
+diff --git a/app/src/pages/InsightsPage.tsx b/app/src/pages/InsightsPage.tsx
+index c3a7b02..af3540c 100644
+--- a/app/src/pages/InsightsPage.tsx
++++ b/app/src/pages/InsightsPage.tsx
+@@ -13,7 +13,7 @@ export function InsightsPage({ workspace }: { workspace: Workspace }) {
+   const fillComparisons = workspace.positions.filter((item) => item.actualDebit !== undefined && item.entryContext?.candidate?.plannedDebit !== undefined).map((item) => (item.entryContext!.candidate!.plannedDebit! - item.actualDebit!) * 100 * item.contracts);
+   const averageFillImprovement = fillComparisons.length ? fillComparisons.reduce((sum, value) => sum + value, 0) / fillComparisons.length : undefined;
+   const classCounts = classified.reduce<Record<string, number>>((counts, item) => ({ ...counts, [item.tradeClass!]: (counts[item.tradeClass!] || 0) + 1 }), {});
+-  return <div className="page"><PageHeader title="Insights" subtitle="Patterns across your trading history." />
++  return <div className="page" data-tour-id="insights-shell"><PageHeader title="Insights" subtitle="Patterns across your trading history." />
+     <section className="metric-grid"><MetricCard title="Ideas" value={workspace.ideas.length} subtitle="All researched setups." /><MetricCard title="Confirmed Trades" value={workspace.positions.length} subtitle="Actual entries only." /><MetricCard title="Reviews" value={reviewed.length} subtitle="Completed trade reviews." /><MetricCard title="Risk in Use" value={`$${activeRisk.toFixed(2)}`} subtitle="Maximum loss across active trades." /></section>
+     <div className="dashboard-grid"><section><div className="section-heading"><div><h2>Strategy Mix</h2><p>How research is distributed.</p></div></div>{Object.keys(strategyCounts).length ? <div className="card-list">{Object.entries(strategyCounts).map(([strategy, count]) => <SummaryCard key={strategy} title={strategy} subtitle="Researched ideas" metric={count} />)}</div> : <EmptyCard title="No Strategy Data" subtitle="Insights begin after ideas are saved." />}</section><section><div className="section-heading"><div><h2>Catalyst Mix</h2><p>Scheduled events by category.</p></div></div>{Object.keys(catalystCounts).length ? <div className="card-list">{Object.entries(catalystCounts).map(([type, count]) => <SummaryCard key={type} title={type} subtitle="Scheduled catalysts" metric={count} />)}</div> : <EmptyCard title="No Catalyst Data" subtitle="Add scheduled events to compare categories." />}</section></div>
+     <section><div className="section-heading"><div><h2>Trade Lifecycle</h2><p>Entry intention and execution context from confirmed Trades.</p></div></div>{workspace.positions.length ? <><div className="metric-grid"><MetricCard title="Average Defined Risk" value={`$${averageRisk.toFixed(2)}`} subtitle="Maximum loss recorded per confirmed Trade." /><MetricCard title="Average Fill vs Plan" value={averageFillImprovement === undefined ? 'TBD' : `${averageFillImprovement >= 0 ? '+' : '-'}$${Math.abs(averageFillImprovement).toFixed(2)}`} subtitle="Positive means actual debit improved on the Candidate." /><MetricCard title="Invalidated at Exit" value={workspace.positions.filter((item) => item.exit?.thesisHealth === 'invalidated').length} subtitle="User-authored Thesis Health; it never auto-closes a Trade." /></div><div className="three-grid">{Object.entries(classCounts).map(([tradeClass, count]) => <SummaryCard key={tradeClass} title={TRADE_CLASS_LABELS[tradeClass as keyof typeof TRADE_CLASS_LABELS]} subtitle="Confirmed Trades" metric={count} />)}{workspace.positions.filter((item) => item.exit).slice(0, 3).map((item) => <SummaryCard key={item.id} title={item.ticker} subtitle="Thesis at exit" metric={THESIS_HEALTH_LABELS[item.exit!.thesisHealth]} meta={item.exit!.exitReason.replaceAll('_', ' ')} />)}</div></> : <EmptyCard title="No Trade Lifecycle Data" subtitle="Record actual entries and exits to build this history." />}</section>
+diff --git a/app/src/pages/OverviewPage.tsx b/app/src/pages/OverviewPage.tsx
+index d1b349f..59cf2d1 100644
+--- a/app/src/pages/OverviewPage.tsx
++++ b/app/src/pages/OverviewPage.tsx
+@@ -10,8 +10,8 @@ export function OverviewPage({ workspace, onBuildIdea }: { workspace: Workspace;
+   const active = workspace.positions.filter((item) => item.status === 'active'); const risk = openRiskSummary(workspace.positions, workspace.policy?.maximumOpenRisk);
+   const upcoming = workspace.catalysts.filter((item) => item.date && item.date >= new Date().toISOString().slice(0, 10)).slice(0, 4);
+   const drafts = workspace.ideas.filter((item) => ['draft','watchlist','ready'].includes(item.status)).slice(0, 3);
+-  return <div className="page"><PageHeader title="Overview" subtitle="Risk, trades, and upcoming events." action={<button className="primary" onClick={onBuildIdea}><Plus size={17} />Build Idea</button>} />
+-    <section className="metric-grid" aria-label="Account summary"><MetricCard title="Open Options Max Loss" value={`$${risk.used.toFixed(2)}`} subtitle="Actual defined-risk loss across open Trades." /><MetricCard title="Remaining OJ Capacity" value={risk.remaining === undefined ? 'TBD' : `${risk.remaining < 0 ? '-' : ''}$${Math.abs(risk.remaining).toFixed(2)}`} subtitle="OJ risk-policy capacity—not brokerage buying power." /><MetricCard title="Active Trades" value={active.length} subtitle="Confirmed open positions." /><MetricCard title="Pending Debriefs" value={workspace.pendingReviews} subtitle="Closed Trades awaiting reflection." /></section>
++  return <div className="page" data-tour-id="overview-shell"><PageHeader title="Overview" subtitle="Risk, trades, and upcoming events." action={<button className="primary" onClick={onBuildIdea}><Plus size={17} />Build Idea</button>} />
++    <section className="metric-grid" aria-label="Account summary" data-tour-id="overview-risk"><MetricCard title="Open Options Max Loss" value={`$${risk.used.toFixed(2)}`} subtitle="Actual defined-risk loss across open Trades." /><MetricCard title="Remaining OJ Capacity" value={risk.remaining === undefined ? 'TBD' : `${risk.remaining < 0 ? '-' : ''}$${Math.abs(risk.remaining).toFixed(2)}`} subtitle="OJ risk-policy capacity—not brokerage buying power." /><MetricCard title="Active Trades" value={active.length} subtitle="Confirmed open positions." /><MetricCard title="Pending Debriefs" value={workspace.pendingReviews} subtitle="Closed Trades awaiting reflection." /></section>
+     <div className="dashboard-grid"><section><div className="section-heading"><div><h2>Active Trades</h2><p>Confirmed positions requiring attention.</p></div><button className="text-button" onClick={() => navigate('/trades')}>View Trades <ArrowRight size={15} /></button></div>{active.length ? <div className="card-list">{active.slice(0, 3).map((trade) => <SummaryCard key={trade.id} title={trade.ticker} subtitle={trade.strategy} status="Active" metric={trade.maxRisk === undefined ? 'Risk TBD' : `$${trade.maxRisk.toFixed(2)} risk`} meta={`${trade.contracts} contract${trade.contracts === 1 ? '' : 's'}`} />)}</div> : <EmptyCard title="No Active Trades" subtitle="Confirmed entries will appear here." />}</section>
+       <section><div className="section-heading"><div><h2>Upcoming Catalysts</h2><p>The next scheduled events.</p></div><button className="text-button" onClick={() => navigate('/catalysts')}>View Catalysts <ArrowRight size={15} /></button></div>{upcoming.length ? <div className="card-list">{upcoming.map((item) => <SummaryCard key={item.id} title={<CatalystSourceLink source={item.source}>{item.event}</CatalystSourceLink>} subtitle={item.type} status={item.sensitivity || 'TBD'} metric={item.date} meta={item.linkedTickers.join(', ') || 'No mapping'} action={<button className="text-button" onClick={() => navigateToCatalyst(item.id)}>War Room <ArrowRight size={14} /></button>} />)}</div> : <EmptyCard title="No Upcoming Events" subtitle="Add a scheduled catalyst to begin research." />}</section>
+     </div>
+diff --git a/app/src/pages/TradesPage.tsx b/app/src/pages/TradesPage.tsx
+index 05df5ed..2c36595 100644
+--- a/app/src/pages/TradesPage.tsx
++++ b/app/src/pages/TradesPage.tsx
+@@ -135,11 +135,11 @@ export function TradesPage({ workspace, onSaved, initialIdeaId, onInitialIdeaCon
+   useEffect(() => { if (initialIdeaId) setEntry(true); }, [initialIdeaId]);
+   const positions = workspace.positions.filter((item) => item.status === tab);
+   const risk = openRiskSummary(workspace.positions, workspace.policy?.maximumOpenRisk); const exposures = useMemo(() => exposureSummary(workspace.positions), [workspace.positions]);
+-  return <div className="page"><PageHeader title="Trades" subtitle="Preserve execution, monitor the thesis, and review the full decision story." action={<button className="primary" onClick={() => setEntry(!entry)}><Plus size={17} />Record Trade</button>} />
++  return <div className="page"><PageHeader title="Trades" subtitle="Preserve execution, monitor the thesis, and review the full decision story." action={<button className="primary" data-tour-id="record-trade-action" onClick={() => setEntry(!entry)}><Plus size={17} />Record Trade</button>} />
+     <section className="metric-grid trade-risk-metrics"><MetricCard title="Open Options Max Loss" value={money(risk.used)} subtitle="Actual defined-risk loss across open Trades." /><MetricCard title="OJ Risk Ceiling" value={money(risk.ceiling)} subtitle="Your deliberate risk policy—not a brokerage limit." /><MetricCard title="Remaining Capacity" value={money(risk.remaining)} subtitle="Not brokerage buying power." /><MetricCard title="Open Trades" value={risk.openCount} subtitle="Confirmed positions only." /></section>
+     {entry && <RecordTradeForm workspace={workspace} initialIdeaId={initialIdeaId} onCancel={() => { setEntry(false); onInitialIdeaConsumed?.(); }} onSaved={onSaved} />}
+     {exposures.some((item) => item.trades > 1) && <section className="card exposure-summary"><header><div><span className="eyebrow">Informational only</span><h2>Exposure Concentration</h2></div><p>Tags identify shared context without claiming precise portfolio correlation or double-counting risk.</p></header><div>{exposures.filter((item) => item.trades > 1).map((item) => <article key={item.tag}><b>{item.tag}</b><strong>{item.trades} open Trades</strong><span>{money(item.risk)} tagged max loss</span></article>)}</div></section>}
+-    <div className="section-tabs" role="tablist"><button role="tab" aria-selected={tab === 'active'} className={tab === 'active' ? 'active' : ''} onClick={() => setTab('active')}>Active</button><button role="tab" aria-selected={tab === 'closed'} className={tab === 'closed' ? 'active' : ''} onClick={() => setTab('closed')}>Closed</button></div>
+-    {positions.length ? <div className="trade-list">{positions.map((item) => <div className="object-stack" key={item.id}><SummaryCard title={item.ticker} subtitle={item.strategy} status={item.status} metric={item.maxRisk === undefined ? 'Risk TBD' : `${money(item.maxRisk)} max loss`} meta={`${item.contracts} contract${item.contracts === 1 ? '' : 's'} · ${new Date(item.openedAt).toLocaleDateString()}`} /><TradeDetails position={item} workspace={workspace} onSaved={onSaved} onDebrief={onDebrief} /></div>)}</div> : <EmptyCard title={tab === 'active' ? 'No Active Trades' : 'No Closed Trades'} subtitle={tab === 'active' ? 'Watchlist research stays in Ideas until you manually record an actual fill.' : 'Closed positions remain here with their entry context and history.'} />}
++    <section data-tour-id="trade-monitoring"><div className="section-tabs" role="tablist"><button role="tab" aria-selected={tab === 'active'} className={tab === 'active' ? 'active' : ''} onClick={() => setTab('active')}>Active</button><button role="tab" aria-selected={tab === 'closed'} className={tab === 'closed' ? 'active' : ''} onClick={() => setTab('closed')}>Closed</button></div>
++    {positions.length ? <div className="trade-list">{positions.map((item) => <div className="object-stack" key={item.id}><SummaryCard title={item.ticker} subtitle={item.strategy} status={item.status} metric={item.maxRisk === undefined ? 'Risk TBD' : `${money(item.maxRisk)} max loss`} meta={`${item.contracts} contract${item.contracts === 1 ? '' : 's'} · ${new Date(item.openedAt).toLocaleDateString()}`} /><TradeDetails position={item} workspace={workspace} onSaved={onSaved} onDebrief={onDebrief} /></div>)}</div> : <EmptyCard title={tab === 'active' ? 'No Active Trades' : 'No Closed Trades'} subtitle={tab === 'active' ? 'Watchlist research stays in Ideas until you manually record an actual fill.' : 'Closed positions remain here with their entry context and history.'} />}</section>
+   </div>;
+ }
+diff --git a/docs/INTERACTION_WORKFLOW.md b/docs/INTERACTION_WORKFLOW.md
+index 0bd221e..cbc3041 100644
+--- a/docs/INTERACTION_WORKFLOW.md
++++ b/docs/INTERACTION_WORKFLOW.md
+@@ -3,3 +3,5 @@
+ OJ saves locally first, synchronizes approved owner records to Supabase, and explicitly resolves multi-device conflicts. The synchronized row is canonical immediately; there is no submission or pull-request step for an ordinary save.
+ 
+ Draft states include local, syncing, canonical, offline, retry, and conflict. The Work Update Packet is a recovery aid, not an instruction to place a trade or write private data into the public repository. Markdown export and private mirroring remain optional actions.
++
++First-use product guidance is an explicit, versioned choice. The tour changes routes and stores progress in application preferences, but it performs no domain-record write and no provider request. A user can skip, pause, resume, complete, or replay it without affecting Catalyst, Idea, Candidate, Trade, Check-In, Exit, Debrief, or Forecast state. See `PRODUCT_TOUR.md`.
+diff --git a/docs/NAVIGATION_ARCHITECTURE.md b/docs/NAVIGATION_ARCHITECTURE.md
+index 4fefb25..9015986 100644
+--- a/docs/NAVIGATION_ARCHITECTURE.md
++++ b/docs/NAVIGATION_ARCHITECTURE.md
+@@ -8,9 +8,11 @@ OJ has exactly six primary product sections.
+ | Catalysts | `/catalysts` | Month-first calendar, radar, and security mappings. |
+ | Ideas | `/ideas` | Research, candidate structures, status, and export. |
+ | Trades | `/trades` | Confirmed active and closed positions. |
+-| Journal | `/journal` | Check-ins, reviews, and full journal export. |
++| Journal | `/journal` | Trade debriefs, personal lessons, and full journal export. |
+ | Insights | `/insights` | Patterns derived from canonical records. |
+ 
+-Settings is a secondary route at `/settings`. Workspace is a secondary route at `/workspace`; it summarizes members, missions, questions, debriefs, and allowlisted activity without becoming a seventh primary tab. Desktop exposes Workspace below Build Idea. Mobile keeps all six primary destinations visible in the liquid-glass navigation bar and reserves the seventh slot for More. The glass selection can be tapped or dragged across primary destinations. More opens a compact sheet containing Workspace, Settings, and Build Idea. Every control has a text label and remains keyboard reachable.
++Settings is a secondary route at `/settings`. Workspace is a secondary route at `/workspace`; it summarizes members, missions, questions, debriefs, and allowlisted activity without becoming a seventh primary tab. Desktop exposes Workspace below Build Idea. Mobile exposes four user-selected primary shortcuts plus More in the liquid-glass navigation bar. The glass selection can be tapped or dragged across those shortcuts. More contains the other primary sections, Workspace, Settings, and Build Idea, so customization never removes access. Every control has a text label and remains keyboard reachable.
++
++The product tour navigates programmatically by canonical route and resolves stable semantic targets after each route renders. It does not depend on the order of desktop links, the four selected mobile shortcuts, or whether Journal or Insights currently lives in More. See `PRODUCT_TOUR.md`.
+ 
+ Legacy hashes for Trade Ideas, Research, Active Trades, Closed Trades, and Analytics normalize to their current section so existing links do not break.
+diff --git a/docs/PRODUCT_TOUR.md b/docs/PRODUCT_TOUR.md
+new file mode 100644
+index 0000000..f494eb2
+--- /dev/null
++++ b/docs/PRODUCT_TOUR.md
+@@ -0,0 +1,57 @@
++# Product Tour
++
++OJ’s versioned product tour introduces the catalyst-first workflow without creating or changing a domain record. It is an orientation layer, not a sample-data generator. Moving through the tour changes routes and saves only tour progress in the signed-in user’s existing application preferences. It does not call a market-data provider, consume an API credit, create a Catalyst or Idea, or touch a brokerage.
++
++## First use and persistence
++
++`PRODUCT_TOUR_VERSION` is currently `1`. The canonical state lives at `application_preferences.data.productTour`:
++
++```json
++{
++  "version": 1,
++  "status": "in_progress",
++  "step": 4,
++  "updatedAt": "2026-08-15T12:00:00.000Z"
++}
++```
++
++Valid statuses are `not_started`, `in_progress`, `skipped`, and `completed`. An absent or older-version state is treated as new, allowing a materially revised tour to be offered deliberately in a later release. First use asks for consent with **Take a Tour** and **Skip for Now**. Skip and completion persist across devices. An in-progress tour can be paused and resumed from **Settings → Guidance**; skipped and completed tours can be replayed there.
++
++No schema migration is required. Preference saves preserve theme, calendar view, compact-card choice, mobile navigation, and unrelated preference JSON. Optimistic preference revisions continue to detect competing device changes.
++
++## Steps
++
++The 11 steps cover:
++
++1. Overview and the complete catalyst-first lifecycle.
++2. OJ risk policy versus brokerage buying power.
++3. Catalyst calendar and shared factual research.
++4. War Room and Catalyst Intelligence without provider activity.
++5. Private Ideas under “Shared facts, separate conclusions.”
++6. Planned Candidates versus actual execution.
++7. Manual Record Trade after external execution.
++8. Trade monitoring and Check-Ins.
++9. Journal debriefs and personal reflection.
++10. Insights and small-sample caution.
++11. Settings Guidance, replay, and completion.
++
++The controller navigates directly by route; it never assumes a mobile shortcut position or requires a destination to be visible outside **More**. Every anchor uses a stable semantic `data-tour-id`. Target lookup retries for a bounded interval after cross-route rendering. If an account has no Catalyst, Candidate, Trade, or other example, the step becomes a centered explanatory callout instead of failing or fabricating data.
++
++## Responsive and accessible behavior
++
++Desktop uses an anchored popover and highlighted region. Narrow viewports use a bottom sheet so the explanation stays readable above safe-area insets. Target bounds are remeasured on scroll and resize. Reduced-motion preferences disable tour animation and smooth scrolling.
++
++The first-use dialog moves focus into its choices, traps Tab within the modal, restores prior focus, and treats Escape as **Skip for Now**. The active tour is non-modal: its Back, Next, Pause, and Finish controls are keyboard reachable; Left/Right arrows move between steps; Escape pauses; route content remains available. Missing targets are announced in the callout rather than producing an invisible or off-screen control.
++
++## Product boundary
++
++The tour intentionally reinforces these distinctions:
++
++- Catalyst facts may be shared; Ideas, sizing, Trades, and Journal reflection stay private.
++- A Candidate is planned research, not an order.
++- A Trade is manually recorded only after execution elsewhere.
++- A Check-In belongs to Trade monitoring and history, not the Journal feed.
++- Journal contains completed Trade debriefs and personal lessons.
++- OJ risk capacity is not brokerage cash, margin, or buying power.
++
++Phase 9 does not add contextual guidance, spread-efficiency tooling, a brokerage connection, or collaboration gameplay.
+diff --git a/docs/SUPABASE_ARCHITECTURE.md b/docs/SUPABASE_ARCHITECTURE.md
+index a02aef2..606052e 100644
+--- a/docs/SUPABASE_ARCHITECTURE.md
++++ b/docs/SUPABASE_ARCHITECTURE.md
+@@ -31,6 +31,10 @@ The Idea editor writes the dedicated `trade_ideas.idea_status` field while retai
+ 
+ Supabase is the application authority. Commit SHA and note path fields are optional provenance for a private Markdown mirror. Ordinary saves update Supabase directly and never trigger a public Pages build.
+ 
++## Product-tour preferences
++
++Phase 9 reuses `application_preferences.data` for a versioned `productTour` object containing status, step, and update time. Theme, calendar, compact-card, mobile-navigation, and unrelated JSON values remain intact. The existing owner-scoped preference RLS and optimistic `revision` update apply; no new table, policy, function, Edge Function, or migration is required. Tour navigation makes no Catalyst, Idea, Candidate, Trade, Journal, collaboration, research-snapshot, or provider-cache write.
++
+ ## Catalyst-first extension
+ 
+ `20260812025054_catalyst_first_research_foundation.sql` extends the existing Catalyst and Idea tables and adds three owner-scoped tables: `trade_idea_catalysts`, `research_sources`, and append-only `research_snapshots`. It does not duplicate the Calendar, War Room, evidence, mission, forecast, candidate, or Trade systems. See `CATALYST_FIRST_RESEARCH.md` and `RESEARCH_METHODS.md` for product semantics and calculation conventions.
+-- 
+2.50.1 (Apple Git-155)
+
