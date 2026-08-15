@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { demoWorkspace } from '../data/demo';
 import { TradesPage } from './TradesPage';
+import { TradeExitEditor } from '../components/editors/TradeLifecycleEditors';
 import type { Position } from '../types/domain';
 
 const activeTrade: Position = {
@@ -28,6 +29,14 @@ describe('Trade workflow presentation', () => {
     expect(html).toContain('value="2026-09-18"');
     expect(html).toContain('Planned Candidate');
     expect(html).toContain('Actual Trade');
+    expect(html).toContain('I confirm this is an actual fill executed outside OJ.');
+    expect(html).toContain('>Record Trade<');
+  });
+
+  it('preserves the production exit attestation and action copy', () => {
+    const html = renderToStaticMarkup(<TradeExitEditor position={activeTrade} onCancel={() => undefined} onSave={() => undefined} />);
+    expect(html).toContain('I confirm this is the actual full closing transaction.');
+    expect(html).toContain('>Record Exit &amp; Debrief<');
   });
 
   it('distinguishes OJ policy capacity from brokerage buying power', () => {

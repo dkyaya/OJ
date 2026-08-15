@@ -62,6 +62,14 @@ export type CatalystIntelligencePresentation = {
   initialRiskFreeRate?: string;
   providerActionsEnabled?: boolean;
   reviewAction?: { label: string; onReview: (scenarioPrice?: number) => void | Promise<void> };
+  snapshotPersistence?: {
+    saved: boolean;
+    saveLabel?: string;
+    savedLabel?: string;
+    manualSuccessMessage?: string;
+    providerSuccessMessage?: string;
+    savedNotice?: string;
+  };
 };
 
 export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, setMessage, presentation }: { catalyst: Catalyst; workspace: Workspace; actions: CatalystIntelligenceActions; onSaved: () => void | Promise<void>; setMessage: (message: string) => void; presentation?: CatalystIntelligencePresentation }) {
@@ -88,6 +96,7 @@ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, se
     { id: 'bear', label: 'Bear', probability: 25, movePercent: -2, targetIv: 0.2, evaluationDate: scenarioDate },
   ]);
   const [scenarioResult, setScenarioResult] = useState<ReturnType<typeof evaluateScenarios>>();
+  const snapshotPersistence = presentation?.snapshotPersistence;
 
   const callMid = midpoint(number(manual.callBid), number(manual.callAsk));
   const putMid = midpoint(number(manual.putBid), number(manual.putAsk));
@@ -137,7 +146,7 @@ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, se
     if (!first) throw new Error('There is no provider snapshot to save.');
     await actions.saveSnapshot({ catalystId: catalyst.id, tradeIdeaId: selected?.idea.id, ticker: first.ticker, snapshotType: 'market_pricing', observedAt: first.observedAt, methodology: first.methodology, provider: first.provider, sourceQuality: first.sourceQuality, freshness: first.freshness, fetchedAt: first.fetchedAt, sourceReference: first.sourceReference, sourceDate: first.observedAt.slice(0, 10), catalystTimezone: catalyst.timezoneName, catalystSession: catalyst.marketSession, values: { market_snapshot_version: '1.0', option_chain: fetched.snapshots } });
     await onSaved();
-  }, 'Provider snapshot appended to the private Research Ledger.');
+  }, snapshotPersistence?.providerSuccessMessage || 'Provider snapshot appended to the private Research Ledger.');
 
   const calculateScenarios = () => {
     if (!selected?.strategy || !candidateEconomics || selected.candidate.longStrike === undefined || selected.candidate.shortStrike === undefined || selected.candidate.debit === undefined || number(manual.underlying) === undefined || !manual.expiration || percent(riskFreeRate) === undefined) {
@@ -181,7 +190,8 @@ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, se
         <label className="wide"><span>Methodology</span><textarea value={manual.methodology} onChange={(event) => setManual({ ...manual, methodology: event.target.value })} /></label>
         <label className="wide"><span>Notes</span><textarea value={manual.notes} onChange={(event) => setManual({ ...manual, notes: event.target.value })} /></label>
       </div>
-      <div className="panel-actions"><button className="primary" disabled={busy} onClick={() => void run(saveManual, 'Manual market snapshot appended to the private Research Ledger.')}><Save size={16} />Save Snapshot</button>{presentation?.reviewAction && <button disabled={busy} onClick={() => void run(async () => presentation.reviewAction!.onReview(number(manual.underlying)), 'Synthetic Intelligence reviewed. No provider request was made.')}>{presentation.reviewAction.label}</button>}</div>
+      <div className="panel-actions"><button className="primary" disabled={busy || snapshotPersistence?.saved} onClick={() => void run(saveManual, snapshotPersistence?.manualSuccessMessage || 'Manual market snapshot appended to the private Research Ledger.')}><Save size={16} />{snapshotPersistence?.saved ? snapshotPersistence.savedLabel || 'Snapshot Saved' : snapshotPersistence?.saveLabel || 'Save Snapshot'}</button>{presentation?.reviewAction && <button disabled={busy} onClick={() => void run(async () => presentation.reviewAction!.onReview(number(manual.underlying)), 'Synthetic Intelligence reviewed. No provider request was made.')}>{presentation.reviewAction.label}</button>}</div>
+      {snapshotPersistence?.saved && snapshotPersistence.savedNotice && <p className="method-note" role="status">{snapshotPersistence.savedNotice}</p>}
     </details>
 
     <details className="card intelligence-panel" open><summary><span><Calculator size={17} />Candidate Economics &amp; Scenario Lab</span><small>User-controlled assumptions</small></summary>
@@ -204,7 +214,7 @@ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, se
     <details className="card intelligence-panel"><summary><span><CloudDownload size={17} />Providers &amp; Methodology</span><small>Explicit refresh only</small></summary>
       <div className="provider-grid">{providers.map((provider) => <article key={provider.id}><span className={`quality-dot ${provider.availability}`} /> <b>{provider.label}</b><small>{provider.availability.replaceAll('_', ' ')} · {provider.freshness}</small><p>{provider.detail}</p></article>)}</div>
       {fetched.snapshots.length > 0 && <div className="provider-chain-preview"><OptionChainSnapshot contracts={fetched.snapshots} cache={fetched.cache} /></div>}
-      <div className="panel-actions"><button disabled={busy || presentation?.providerActionsEnabled === false} onClick={() => void fetchProviders()}><CloudDownload size={16} />Check Provider Status</button><label className="inline-control"><span>Nearby strikes</span><input type="number" min="1" max="10" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} /></label><button disabled={busy || presentation?.providerActionsEnabled === false || !manual.ticker || !manual.expiration} onClick={() => void fetchOptions()}>Load Delayed Options</button>{fetched.snapshots.length > 0 && <button className="primary" disabled={busy} onClick={() => void saveFetched()}>Save {fetched.snapshots.length} Contracts</button>}</div>
+      <div className="panel-actions"><button disabled={busy || presentation?.providerActionsEnabled === false} onClick={() => void fetchProviders()}><CloudDownload size={16} />Check Provider Status</button><label className="inline-control"><span>Nearby strikes</span><input type="number" min="1" max="10" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} /></label><button disabled={busy || presentation?.providerActionsEnabled === false || !manual.ticker || !manual.expiration} onClick={() => void fetchOptions()}>Load Delayed Options</button>{fetched.snapshots.length > 0 && <button className="primary" disabled={busy || snapshotPersistence?.saved} onClick={() => void saveFetched()}>{snapshotPersistence?.saved ? snapshotPersistence.savedLabel || 'Snapshot Saved' : `Save ${fetched.snapshots.length} Contracts`}</button>}</div>
       <p className="method-note">No polling. MarketData requests require one ticker, one exact expiration, and at most 10 nearby strikes. BLS and Treasury use public official endpoints. SEC requires a request identity; FRED, BEA, Census, and MarketData use optional server secrets. Missing credentials never disable manual entry.</p>
     </details>
   </section>;

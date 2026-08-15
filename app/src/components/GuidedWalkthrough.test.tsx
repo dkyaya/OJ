@@ -61,6 +61,13 @@ describe('Guided Walkthrough behavior', () => {
     expect(container.textContent).toContain('Tutorial Fixture');
     expect(container.textContent).toContain('Straddle estimate');
     expect(container.querySelector('[data-shared-ui="catalyst-intelligence"]')).not.toBeNull();
+    expect(container.querySelector('.intelligence-history')).toBeNull();
+    expect(button('Check Provider Status').disabled).toBe(true);
+    expect(button('Load Delayed Options').disabled).toBe(true);
+    await click('Save Snapshot');
+    expect(container.textContent).toContain('Tutorial snapshot saved to this temporary session.');
+    expect(container.textContent).toContain('It did not enter your production Research Ledger');
+    expect(container.querySelector('.intelligence-history')?.textContent).toContain('Tutorial Fixture');
     await click('Mark Intelligence Reviewed');
     await click('Next');
 
@@ -77,13 +84,15 @@ describe('Guided Walkthrough behavior', () => {
     await click('Next');
 
     expect(container.querySelector('[data-shared-ui="record-trade-editor"]')).not.toBeNull();
+    expect(container.textContent).toContain('I understand this is a synthetic fill simulation. OJ did not place an order.');
+    expect(container.textContent).not.toContain('I confirm this is an actual fill executed outside OJ.');
     const confirmation = container.querySelector<HTMLInputElement>('input[type="checkbox"]');
     if (!confirmation) throw new Error('Trade boundary confirmation was not rendered.');
     await act(async () => { confirmation.click(); });
     expect(container.textContent).toContain('$132.00');
     expect(container.textContent).toContain('$368.00');
     expect(container.textContent).toContain('101.32');
-    await click('Record Trade');
+    await click('Record Tutorial Trade');
     await click('Next');
 
     expect(container.querySelector('[data-shared-ui="trade-detail-surface"]')).not.toBeNull();
@@ -93,10 +102,13 @@ describe('Guided Walkthrough behavior', () => {
     await click('Next');
 
     expect(container.textContent).toContain('+$78.00');
+    expect(container.textContent).toContain('I understand this is a synthetic closing transaction inside the Tutorial Workspace.');
+    expect(container.textContent).not.toContain('I confirm this is the actual full closing transaction.');
+    expect(container.textContent).not.toContain('Record Exit & Debrief');
     const exitConfirmation = container.querySelector<HTMLInputElement>('.confirm-row input[type="checkbox"]');
     if (!exitConfirmation) throw new Error('Exit boundary confirmation was not rendered.');
     await act(async () => { exitConfirmation.click(); });
-    await click('Record Exit & Debrief');
+    await click('Record Tutorial Exit');
     await click('Next');
 
     expect(container.querySelector('[data-shared-ui="debrief-editor"]')).not.toBeNull();
@@ -110,6 +122,22 @@ describe('Guided Walkthrough behavior', () => {
     expect(onFinish).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('Confirmed Trades0');
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('saves the bundled contract snapshot only in Tutorial memory while provider fetches stay disabled', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await act(async () => root.render(<GuidedWalkthrough open state={createGuidedTutorialState('in_progress', 1)} sessionKey={5} onStage={vi.fn()} onPause={vi.fn()} onFinish={vi.fn()} onExit={vi.fn()} onRestart={vi.fn()} />));
+
+    expect(container.querySelector('.intelligence-history')).toBeNull();
+    expect(button('Check Provider Status').disabled).toBe(true);
+    expect(button('Load Delayed Options').disabled).toBe(true);
+    await click('Save 6 Contracts');
+    expect(container.textContent).toContain('Tutorial fixture snapshot saved to this temporary session.');
+    expect(container.querySelector('.intelligence-history')?.textContent).toContain('Tutorial Fixture');
+    expect(button('Tutorial Snapshot Saved').disabled).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await click('Restart');
+    expect(container.querySelector('.intelligence-history')).toBeNull();
   });
 
   it('preserves editable arrows and Escape pause behavior', async () => {

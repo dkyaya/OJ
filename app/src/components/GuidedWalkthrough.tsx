@@ -21,15 +21,10 @@ import {
   saveTutorialCandidate,
   saveTutorialDebrief,
   saveTutorialIdea,
+  saveTutorialResearchSnapshot,
   tutorialStageComplete,
   type TutorialWorkspace,
 } from '../features/tour/tutorial-workspace';
-
-const tutorialIntelligenceActions: CatalystIntelligenceActions = {
-  saveSnapshot: async () => undefined,
-  loadProviderStatus: async () => [],
-  loadDelayedOptions: async () => ({ snapshots: [] }),
-};
 
 function TutorialBadge({ detail = 'Synthetic example' }: { detail?: string }) {
   return <span className="tutorial-badge"><FlaskConical size={13} />Tutorial <small>{detail}</small></span>;
@@ -65,6 +60,11 @@ export function GuidedWalkthrough({ open, state, sessionKey, onStage, onPause, o
   const complete = tutorialStageComplete(workspace, state.stage);
   const uiWorkspace = tutorialUiWorkspace(workspace, { previewIdea: state.stage >= 1, previewCandidate: state.stage >= 1 });
   const position = uiWorkspace.positions[0];
+  const tutorialIntelligenceActions = useMemo<CatalystIntelligenceActions>(() => ({
+    saveSnapshot: async () => setWorkspace((current) => saveTutorialResearchSnapshot(current)),
+    loadProviderStatus: async () => [],
+    loadDelayedOptions: async () => ({ snapshots: [] }),
+  }), []);
 
   useEffect(() => {
     const next = reconstructTutorialWorkspace(state.stage, sessionId);
@@ -137,6 +137,13 @@ export function GuidedWalkthrough({ open, state, sessionKey, onStage, onPause, o
             methodology: 'Bundled synthetic tutorial fixture; no provider request made.', notes: 'Synthetic walkthrough data.',
           },
           providerActionsEnabled: false,
+          snapshotPersistence: {
+            saved: workspace.tutorialResearchSnapshotSaved,
+            savedLabel: 'Tutorial Snapshot Saved',
+            manualSuccessMessage: 'Tutorial snapshot saved to this temporary session.',
+            providerSuccessMessage: 'Tutorial fixture snapshot saved to this temporary session.',
+            savedNotice: 'This snapshot exists only in the temporary Tutorial Workspace. It did not enter your production Research Ledger and will disappear when the Tutorial is cleared.',
+          },
           reviewAction: workspace.intelligenceReviewed ? undefined : { label: 'Mark Intelligence Reviewed', onReview: () => update((current) => reviewTutorialIntelligence(current, 104), 'Synthetic Intelligence reviewed. No provider request was made.') },
         }}
       />
@@ -182,6 +189,12 @@ export function GuidedWalkthrough({ open, state, sessionKey, onStage, onPause, o
               initialActualDebit={tutorialStory.actualDebit}
               badge={<TutorialBadge detail="Manual record simulation" />}
               title="Record the $1.32 Tutorial Fill"
+              presentation={{
+                description: 'Practice the real manual Record Trade flow with a synthetic fill. OJ did not place or route an order.',
+                actualDebitHelper: 'Synthetic spread fill used only inside the Tutorial Workspace.',
+                confirmationLabel: 'I understand this is a synthetic fill simulation. OJ did not place an order.',
+                submitLabel: 'Record Tutorial Trade',
+              }}
               onCancel={remain}
               onRecord={(input) => update((current) => recordTutorialTrade(current, input.actualDebit), 'Tutorial Trade recorded without brokerage activity.')}
             />
@@ -192,7 +205,19 @@ export function GuidedWalkthrough({ open, state, sessionKey, onStage, onPause, o
             </StageShell>
               : state.stage === 6 && position ? <StageShell action="exit" title="Record the Exit">
                 <section className="card tutorial-trade-context"><TutorialBadge /><TradeDetailSurface position={position} workspace={uiWorkspace} /></section>
-                <TradeExitEditor position={position} initialExitValue={tutorialStory.exitValue} initialExitReason="target_reached" onCancel={remain} onSave={(input) => update((current) => recordTutorialExit(current, input.exitValue), 'Tutorial Exit recorded outside real P/L.')} />
+                <TradeExitEditor
+                  position={position}
+                  initialExitValue={tutorialStory.exitValue}
+                  initialExitReason="target_reached"
+                  presentation={{
+                    description: 'Practice one complete synthetic closing transaction. The separate Debrief stage comes next.',
+                    confirmationLabel: 'I understand this is a synthetic closing transaction inside the Tutorial Workspace.',
+                    confirmationError: 'Complete and confirm the synthetic Tutorial closing transaction.',
+                    submitLabel: 'Record Tutorial Exit',
+                  }}
+                  onCancel={remain}
+                  onSave={(input) => update((current) => recordTutorialExit(current, input.exitValue), 'Tutorial Exit recorded outside real P/L.')}
+                />
               </StageShell>
                 : state.stage === 7 && position ? <StageShell action="debrief" title="Write the Debrief">
                   <TutorialBadge detail="Session-only reflection" />

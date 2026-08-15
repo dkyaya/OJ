@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { demoWorkspace } from '../../data/demo';
+import { tutorialUiWorkspace } from './tutorial-ui-adapter';
 import {
   addTutorialCheckin,
   clearTutorialWorkspace,
@@ -13,6 +14,7 @@ import {
   saveTutorialCandidate,
   saveTutorialDebrief,
   saveTutorialIdea,
+  saveTutorialResearchSnapshot,
   tutorialStageComplete,
 } from './tutorial-workspace';
 
@@ -20,6 +22,9 @@ describe('isolated Tutorial Workspace', () => {
   it('completes the synthetic Catalyst-to-Insights story with production math', () => {
     let workspace = createTutorialWorkspace('full-story', new Date('2026-08-15T12:00:00Z'));
     workspace = createTutorialCatalyst(workspace);
+    expect(tutorialUiWorkspace(workspace).researchSnapshots).toHaveLength(0);
+    workspace = saveTutorialResearchSnapshot(workspace);
+    expect(tutorialUiWorkspace(workspace).researchSnapshots).toMatchObject([{ provider: 'Tutorial Fixture' }]);
     workspace = reviewTutorialIntelligence(workspace, 104);
     workspace = saveTutorialIdea(workspace);
     workspace = saveTutorialCandidate(workspace);
@@ -46,6 +51,8 @@ describe('isolated Tutorial Workspace', () => {
     expect(demoWorkspace.activity).toEqual(realBefore.activity);
     tutorial = clearTutorialWorkspace(tutorial);
     expect(tutorial.kind).toBe('tutorial');
+    expect(tutorial.tutorialResearchSnapshotSaved).toBe(false);
+    expect(tutorialUiWorkspace(tutorial).researchSnapshots).toHaveLength(0);
     expect([tutorial.catalyst, tutorial.idea, tutorial.trade, tutorial.checkin, tutorial.exit, tutorial.debrief]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
     expect(demoWorkspace).toEqual(realBefore);
   });
@@ -53,11 +60,22 @@ describe('isolated Tutorial Workspace', () => {
   it('reconstructs only deterministic prerequisites for resume and clears on restart/finish', () => {
     const resumed = reconstructTutorialWorkspace(5, 'resume', new Date('2026-08-15T12:00:00Z'));
     expect(resumed.trade).toBeDefined();
+    expect(resumed.tutorialResearchSnapshotSaved).toBe(true);
     expect(resumed.checkin).toBeUndefined();
     const cleared = clearTutorialWorkspace(resumed);
     expect(cleared.catalyst).toBeUndefined();
+    expect(cleared.tutorialResearchSnapshotSaved).toBe(false);
     expect(cleared.fixture.options).toHaveLength(6);
     expect(cleared.sessionId).toBe('resume');
+  });
+
+  it('requires both a session-only snapshot and review before Intelligence is complete', () => {
+    let workspace = createTutorialCatalyst(createTutorialWorkspace('snapshot-gate', new Date('2026-08-15T12:00:00Z')));
+    expect(tutorialStageComplete(workspace, 1)).toBe(false);
+    workspace = reviewTutorialIntelligence(workspace, 104);
+    expect(tutorialStageComplete(workspace, 1)).toBe(false);
+    workspace = saveTutorialResearchSnapshot(workspace);
+    expect(tutorialStageComplete(workspace, 1)).toBe(true);
   });
 
   it('has a structural no-write and no-provider import boundary', () => {

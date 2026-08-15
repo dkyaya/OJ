@@ -56,6 +56,20 @@ export type TradeExitInput = {
   confirmed: boolean;
 };
 
+export type RecordTradePresentation = {
+  description?: string;
+  actualDebitHelper?: string;
+  confirmationLabel?: string;
+  submitLabel?: string;
+};
+
+export type TradeExitPresentation = {
+  description?: string;
+  confirmationLabel?: string;
+  confirmationError?: string;
+  submitLabel?: string;
+};
+
 export function RiskCapacity({ workspace, projected }: { workspace: Workspace; projected?: number }) {
   const risk = openRiskSummary(workspace.positions, workspace.policy?.maximumOpenRisk);
   const remaining = projected === undefined || risk.ceiling === undefined ? risk.remaining : risk.ceiling - projected;
@@ -67,7 +81,7 @@ export function RiskCapacity({ workspace, projected }: { workspace: Workspace; p
   </section>;
 }
 
-export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit, onCancel, onRecord, title = 'Record Trade', badge }: {
+export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit, onCancel, onRecord, title = 'Record Trade', badge, presentation }: {
   workspace: Workspace;
   initialIdeaId?: string;
   initialActualDebit?: number;
@@ -75,7 +89,14 @@ export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit
   onRecord: (input: RecordTradeInput) => void | Promise<void>;
   title?: string;
   badge?: ReactNode;
+  presentation?: RecordTradePresentation;
 }) {
+  const copy = {
+    description: presentation?.description || 'Use this only after execution occurs elsewhere. OJ cannot place or change an order.',
+    actualDebitHelper: presentation?.actualDebitHelper || 'Your executed spread fill.',
+    confirmationLabel: presentation?.confirmationLabel || 'I confirm this is an actual fill executed outside OJ.',
+    submitLabel: presentation?.submitLabel || 'Record Trade',
+  };
   const eligible = workspace.ideas.filter((idea) => ['watchlist','ready'].includes(idea.status) && !workspace.positions.some((position) => position.ideaId === idea.id));
   const initialIdea = eligible.find((idea) => idea.id === initialIdeaId) || eligible[0];
   const initialDraft = () => ({ ...tradeEntryDraft(initialIdea, initialIdea?.candidates[0]), ...(initialActualDebit === undefined ? {} : { actualDebit: String(initialActualDebit) }) });
@@ -114,7 +135,7 @@ export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit
   const projectedOver = validation.metrics && workspace.policy && validation.projectedRisk > workspace.policy.maximumOpenRisk;
 
   return <section className="card inline-form trade-entry-form" data-shared-ui="record-trade-editor">
-    <header><div>{badge}<span className="eyebrow">Manual execution record</span><h2>{title}</h2><p>Use this only after execution occurs elsewhere. OJ cannot place or change an order.</p></div></header>
+    <header><div>{badge}<span className="eyebrow">Manual execution record</span><h2>{title}</h2><p>{copy.description}</p></div></header>
     {!eligible.length ? <EmptyCard title="No Eligible Ideas" subtitle="A Watchlist or Ready Idea without a confirmed trade is required." /> : <>
       <div className="form-grid">
         <label><span>Trade Idea</span><select value={form.ideaId} onChange={(event) => chooseIdea(event.target.value)}>{eligible.map((item) => <option key={item.id} value={item.id}>{item.ticker} · {item.strategy}</option>)}</select></label>
@@ -124,7 +145,7 @@ export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit
         <label><span>Actual Long Strike</span><input inputMode="decimal" value={form.longStrike} onChange={(event) => setForm({ ...form, longStrike: event.target.value })} /></label>
         <label><span>Actual Short Strike</span><input inputMode="decimal" value={form.shortStrike} onChange={(event) => setForm({ ...form, shortStrike: event.target.value })} /></label>
         <label><span>Contracts</span><input inputMode="numeric" value={form.contracts} onChange={(event) => setForm({ ...form, contracts: event.target.value })} /></label>
-        <label><span>Actual Debit</span><small>Your executed spread fill.</small><input inputMode="decimal" value={form.actualDebit} onChange={(event) => setForm({ ...form, actualDebit: event.target.value })} /></label>
+        <label><span>Actual Debit</span><small>{copy.actualDebitHelper}</small><input inputMode="decimal" value={form.actualDebit} onChange={(event) => setForm({ ...form, actualDebit: event.target.value })} /></label>
         <label><span>Entry Fees</span><input inputMode="decimal" value={form.fees} onChange={(event) => setForm({ ...form, fees: event.target.value })} /></label>
         <label><span>Filled At</span><input type="datetime-local" value={form.openedAt} onChange={(event) => setForm({ ...form, openedAt: event.target.value })} /></label>
         <label className="wide"><span>Entry Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
@@ -136,9 +157,9 @@ export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit
       </div>
       <RiskCapacity workspace={workspace} projected={validation.metrics ? validation.projectedRisk : undefined} />
       {projectedOver && <section className="risk-acknowledgement"><p>This historical fill brings open defined-risk loss above the current OJ ceiling. OJ records it but does not resize or reject the trade.</p><label className="confirm-row"><input type="checkbox" checked={form.riskAcknowledged} onChange={(event) => setForm({ ...form, riskAcknowledged: event.target.checked })} /><span>I acknowledge the OJ policy exception.</span></label><label><span>Reason</span><textarea value={form.riskNote} onChange={(event) => setForm({ ...form, riskNote: event.target.value })} /></label></section>}
-      <label className="confirm-row"><input type="checkbox" checked={form.confirmed} onChange={(event) => setForm({ ...form, confirmed: event.target.checked })} /><span>I confirm this is an actual fill executed outside OJ.</span></label>
+      <label className="confirm-row"><input type="checkbox" checked={form.confirmed} onChange={(event) => setForm({ ...form, confirmed: event.target.checked })} /><span>{copy.confirmationLabel}</span></label>
       {message && <p className="page-message" role="alert">{message}</p>}
-      <footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Recording' : 'Record Trade'}</button></footer>
+      <footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Recording' : copy.submitLabel}</button></footer>
     </>}
   </section>;
 }
@@ -150,12 +171,18 @@ export function TradeCheckinEditor({ position, onCancel, onSave, initialWhatChan
   return <section className="inline-form nested-trade-form" data-shared-ui="trade-checkin-editor"><header><h3>Trade Check-In</h3><p>Record a concise observation. This does not change or close the Trade.</p></header><div className="form-grid"><label><span>Thesis Health</span><select value={form.thesisHealth} onChange={(event) => setForm({ ...form, thesisHealth: event.target.value as ThesisHealth })}>{Object.entries(THESIS_HEALTH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Checked At</span><input type="datetime-local" value={form.checkedAt} onChange={(event) => setForm({ ...form, checkedAt: event.target.value })} /></label><label><span>Planned Exit</span><select value={form.plannedExitState} onChange={(event) => setForm({ ...form, plannedExitState: event.target.value as typeof form.plannedExitState })}><option value="still_valid">Still Valid</option><option value="reassess">Reassess</option><option value="changed">Management View Changed</option></select></label><label className="wide"><span>What Changed?</span><textarea value={form.whatChanged} onChange={(event) => setForm({ ...form, whatChanged: event.target.value })} /></label><label className="wide"><span>Current Management View</span><textarea placeholder="Optional update; the original plan remains unchanged." value={form.managementView} onChange={(event) => setForm({ ...form, managementView: event.target.value })} /></label></div><div className="checkin-signals"><label><input type="checkbox" checked={form.priceChanged} onChange={(event) => setForm({ ...form, priceChanged: event.target.checked })} />Price structure</label><label><input type="checkbox" checked={form.catalystChanged} onChange={(event) => setForm({ ...form, catalystChanged: event.target.checked })} />Catalyst information</label><label><input type="checkbox" checked={form.volatilityChanged} onChange={(event) => setForm({ ...form, volatilityChanged: event.target.checked })} />IV / pricing</label><label><input type="checkbox" checked={form.macroChanged} onChange={(event) => setForm({ ...form, macroChanged: event.target.checked })} />Macro context</label><label><input type="checkbox" checked={form.invalidationOccurred} onChange={(event) => setForm({ ...form, invalidationOccurred: event.target.checked })} />Invalidation occurred</label></div>{message && <p className="page-message">{message}</p>}<footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving || !form.whatChanged.trim()} onClick={() => void save()}>{saving ? 'Saving' : 'Save Check-In'}</button></footer></section>;
 }
 
-export function TradeExitEditor({ position, onCancel, onSave, initialExitValue = '', initialExitReason = 'manual_other' }: { position: Position; onCancel: () => void; onSave: (input: TradeExitInput) => void | Promise<void>; initialExitValue?: string | number; initialExitReason?: ExitReason }) {
+export function TradeExitEditor({ position, onCancel, onSave, initialExitValue = '', initialExitReason = 'manual_other', presentation }: { position: Position; onCancel: () => void; onSave: (input: TradeExitInput) => void | Promise<void>; initialExitValue?: string | number; initialExitReason?: ExitReason; presentation?: TradeExitPresentation }) {
+  const copy = {
+    description: presentation?.description || 'Phase 8.6 records one complete closing transaction; it does not provide multi-lot accounting.',
+    confirmationLabel: presentation?.confirmationLabel || 'I confirm this is the actual full closing transaction.',
+    confirmationError: presentation?.confirmationError || 'Complete and confirm the actual closing transaction.',
+    submitLabel: presentation?.submitLabel || 'Record Exit & Debrief',
+  };
   const [form, setForm] = useState({ exitedAt: localTimestamp(), exitValue: String(initialExitValue), exitValueType: 'credit' as 'credit' | 'debit', fees: '0', exitReason: initialExitReason, thesisHealth: 'intact' as ThesisHealth, catalystRelationship: '', notes: '', confirmed: false });
   const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
   const pnl = realizedVerticalPnl(position.actualDebit || 0, position.entryFees, Number(form.exitValue), form.exitValueType, Number(form.fees), position.contracts);
-  const save = async () => { if (!form.confirmed || pnl === null) return setMessage('Complete and confirm the actual closing transaction.'); setSaving(true); try { await onSave({ tradeId: position.id, exitedAt: form.exitedAt, exitValue: Number(form.exitValue), exitValueType: form.exitValueType, fees: Number(form.fees), exitReason: form.exitReason, thesisHealth: form.thesisHealth, catalystRelationship: form.catalystRelationship, notes: form.notes, confirmed: form.confirmed }); } catch (error) { setMessage(error instanceof Error ? error.message : 'Exit failed.'); } finally { setSaving(false); } };
-  return <section className="inline-form nested-trade-form" data-shared-ui="trade-exit-editor"><header><h3>Record Full Exit</h3><p>Phase 8.6 records one complete closing transaction; it does not provide multi-lot accounting.</p></header><div className="form-grid"><label><span>Exited At</span><input type="datetime-local" value={form.exitedAt} onChange={(event) => setForm({ ...form, exitedAt: event.target.value })} /></label><label><span>Closing Transaction</span><select value={form.exitValueType} onChange={(event) => setForm({ ...form, exitValueType: event.target.value as 'credit' | 'debit' })}><option value="credit">Credit Received</option><option value="debit">Debit Paid</option></select></label><label><span>Closing Value</span><input inputMode="decimal" value={form.exitValue} onChange={(event) => setForm({ ...form, exitValue: event.target.value })} /></label><label><span>Exit Fees</span><input inputMode="decimal" value={form.fees} onChange={(event) => setForm({ ...form, fees: event.target.value })} /></label><label><span>Exit Reason</span><select value={form.exitReason} onChange={(event) => setForm({ ...form, exitReason: event.target.value as ExitReason })}>{Object.entries(EXIT_REASON_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Thesis at Exit</span><select value={form.thesisHealth} onChange={(event) => setForm({ ...form, thesisHealth: event.target.value as ThesisHealth })}>{Object.entries(THESIS_HEALTH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="wide"><span>Catalyst Relationship</span><input value={form.catalystRelationship} onChange={(event) => setForm({ ...form, catalystRelationship: event.target.value })} /></label><label className="wide"><span>Exit Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label></div><div className="exit-preview"><span>Estimated realized P/L</span><strong>{pnl === null ? 'Complete actual values' : `${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}`}</strong></div><label className="confirm-row"><input type="checkbox" checked={form.confirmed} onChange={(event) => setForm({ ...form, confirmed: event.target.checked })} /><span>I confirm this is the actual full closing transaction.</span></label>{message && <p className="page-message">{message}</p>}<footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Recording' : 'Record Exit & Debrief'}</button></footer></section>;
+  const save = async () => { if (!form.confirmed || pnl === null) return setMessage(copy.confirmationError); setSaving(true); try { await onSave({ tradeId: position.id, exitedAt: form.exitedAt, exitValue: Number(form.exitValue), exitValueType: form.exitValueType, fees: Number(form.fees), exitReason: form.exitReason, thesisHealth: form.thesisHealth, catalystRelationship: form.catalystRelationship, notes: form.notes, confirmed: form.confirmed }); } catch (error) { setMessage(error instanceof Error ? error.message : 'Exit failed.'); } finally { setSaving(false); } };
+  return <section className="inline-form nested-trade-form" data-shared-ui="trade-exit-editor"><header><h3>Record Full Exit</h3><p>{copy.description}</p></header><div className="form-grid"><label><span>Exited At</span><input type="datetime-local" value={form.exitedAt} onChange={(event) => setForm({ ...form, exitedAt: event.target.value })} /></label><label><span>Closing Transaction</span><select value={form.exitValueType} onChange={(event) => setForm({ ...form, exitValueType: event.target.value as 'credit' | 'debit' })}><option value="credit">Credit Received</option><option value="debit">Debit Paid</option></select></label><label><span>Closing Value</span><input inputMode="decimal" value={form.exitValue} onChange={(event) => setForm({ ...form, exitValue: event.target.value })} /></label><label><span>Exit Fees</span><input inputMode="decimal" value={form.fees} onChange={(event) => setForm({ ...form, fees: event.target.value })} /></label><label><span>Exit Reason</span><select value={form.exitReason} onChange={(event) => setForm({ ...form, exitReason: event.target.value as ExitReason })}>{Object.entries(EXIT_REASON_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Thesis at Exit</span><select value={form.thesisHealth} onChange={(event) => setForm({ ...form, thesisHealth: event.target.value as ThesisHealth })}>{Object.entries(THESIS_HEALTH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="wide"><span>Catalyst Relationship</span><input value={form.catalystRelationship} onChange={(event) => setForm({ ...form, catalystRelationship: event.target.value })} /></label><label className="wide"><span>Exit Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label></div><div className="exit-preview"><span>Estimated realized P/L</span><strong>{pnl === null ? 'Complete actual values' : `${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}`}</strong></div><label className="confirm-row"><input type="checkbox" checked={form.confirmed} onChange={(event) => setForm({ ...form, confirmed: event.target.checked })} /><span>{copy.confirmationLabel}</span></label>{message && <p className="page-message">{message}</p>}<footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Recording' : copy.submitLabel}</button></footer></section>;
 }
 
 export function TradeDetailSurface({ position, workspace, onOpenCatalyst, onViewIdea }: { position: Position; workspace: Workspace; onOpenCatalyst?: (id: string) => void; onViewIdea?: () => void }) {

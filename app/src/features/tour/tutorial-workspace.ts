@@ -48,6 +48,7 @@ export type TutorialWorkspace = {
   sessionId: string;
   fixture: TutorialFixture;
   catalyst?: TutorialCatalyst;
+  tutorialResearchSnapshotSaved: boolean;
   intelligenceReviewed: boolean;
   scenarioPrice: number;
   idea?: TutorialIdea;
@@ -63,9 +64,15 @@ export function createTutorialWorkspace(sessionId: string, now = new Date()): Tu
     kind: 'tutorial',
     sessionId,
     fixture: createTutorialFixture(now),
+    tutorialResearchSnapshotSaved: false,
     intelligenceReviewed: false,
     scenarioPrice: 104,
   };
+}
+
+export function saveTutorialResearchSnapshot(workspace: TutorialWorkspace): TutorialWorkspace {
+  if (!workspace.catalyst) throw new Error('Create the Tutorial Catalyst first.');
+  return { ...workspace, tutorialResearchSnapshotSaved: true };
 }
 
 export function createTutorialCatalyst(workspace: TutorialWorkspace, input?: Partial<Omit<TutorialCatalyst, 'id' | 'visibility'>>): TutorialWorkspace {
@@ -90,7 +97,7 @@ export function reviewTutorialIntelligence(workspace: TutorialWorkspace, scenari
 }
 
 export function saveTutorialIdea(workspace: TutorialWorkspace, input?: Partial<Omit<TutorialIdea, 'id' | 'catalystId' | 'status'>>): TutorialWorkspace {
-  if (!workspace.catalyst || !workspace.intelligenceReviewed) throw new Error('Review the Tutorial Catalyst and its Intelligence first.');
+  if (!workspace.catalyst || !workspace.tutorialResearchSnapshotSaved || !workspace.intelligenceReviewed) throw new Error('Save and review the Tutorial Catalyst Intelligence first.');
   return {
     ...workspace,
     idea: {
@@ -172,7 +179,10 @@ export function clearTutorialWorkspace(workspace: TutorialWorkspace): TutorialWo
 export function reconstructTutorialWorkspace(stage: number, sessionId: string, now = new Date()): TutorialWorkspace {
   let workspace = createTutorialWorkspace(sessionId, now);
   if (stage >= 1) workspace = createTutorialCatalyst(workspace);
-  if (stage >= 2) workspace = reviewTutorialIntelligence(workspace, 104);
+  if (stage >= 2) {
+    workspace = saveTutorialResearchSnapshot(workspace);
+    workspace = reviewTutorialIntelligence(workspace, 104);
+  }
   if (stage >= 3) workspace = saveTutorialIdea(workspace);
   if (stage >= 4) workspace = saveTutorialCandidate(workspace);
   if (stage >= 5) workspace = recordTutorialTrade(workspace);
@@ -185,7 +195,7 @@ export function reconstructTutorialWorkspace(stage: number, sessionId: string, n
 export function tutorialStageComplete(workspace: TutorialWorkspace, stage: number): boolean {
   return [
     Boolean(workspace.catalyst),
-    workspace.intelligenceReviewed,
+    workspace.tutorialResearchSnapshotSaved && workspace.intelligenceReviewed,
     Boolean(workspace.idea),
     Boolean(workspace.candidate),
     Boolean(workspace.trade),
