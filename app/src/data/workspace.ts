@@ -66,6 +66,13 @@ export function activeIdeaOpportunities(items: Opportunity[], archivedIdeaIds: R
   return items.filter((item) => !item.ideaId || !archivedIdeaIds.has(item.ideaId));
 }
 
+export function journalDebriefsFromRows(rows: Record<string, unknown>[]): JournalRecord[] {
+  return rows.map((row) => ({
+    id: String(row.id), ideaId: String(row.trade_idea_id), tradeId: optionalString(row.trade_id), kind: 'review' as const,
+    createdAt: String(row.created_at), summary: dataText(record(row.data), 'Summary', 'summary', 'Lesson') || 'Trade review', data: record(row.data),
+  })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export async function loadWorkspace(): Promise<Workspace> {
   if (new URLSearchParams(location.search).get('demo') === '1') return { ...demoWorkspace, lastLoadedAt: new Date().toISOString() };
   if (!supabase) return emptyWorkspace();
@@ -189,10 +196,7 @@ export async function loadWorkspace(): Promise<Workspace> {
       openedAt: String(row.opened_at), closedAt: row.closed_at ? String(row.closed_at) : undefined, revision: Number(row.revision || 1), data,
     };
   });
-  const journal: JournalRecord[] = [
-    ...((checkinsResult.data || []) as Record<string, unknown>[]).map((row) => ({ id: String(row.id), ideaId: String(row.trade_idea_id), tradeId: optionalString(row.trade_id), kind: 'check-in' as const, createdAt: String(row.checked_at || row.created_at), summary: dataText(record(row.data), 'what_changed', 'Summary', 'summary', 'Note') || 'Trade check-in', data: record(row.data) })),
-    ...((reviewsResult.data || []) as Record<string, unknown>[]).map((row) => ({ id: String(row.id), ideaId: String(row.trade_idea_id), tradeId: optionalString(row.trade_id), kind: 'review' as const, createdAt: String(row.created_at), summary: dataText(record(row.data), 'Summary', 'summary', 'Lesson') || 'Trade review', data: record(row.data) })),
-  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const journal = journalDebriefsFromRows((reviewsResult.data || []) as Record<string, unknown>[]);
   const policyRow = policyResult.data as Record<string, unknown> | null;
   const policy: AccountPolicy | undefined = policyRow ? {
     totalCapital: Number(policyRow.total_account_capital), maximumOpenRisk: Number(policyRow.maximum_open_options_risk), fixedPerTradeLimit: number(policyRow.fixed_per_trade_limit),

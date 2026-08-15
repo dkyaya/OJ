@@ -1,0 +1,1023 @@
+From d77072e81de9b6889b3171ad772bb25ee4cfe236 Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Sat, 15 Aug 2026 18:08:10 -0400
+Subject: [PATCH] Harden product tour keyboard transitions
+
+---
+ app/package-lock.json                         | 540 ++++++++++++++++++
+ app/package.json                              |   1 +
+ .../components/ProductTour.keyboard.test.tsx  | 171 ++++++
+ app/src/components/ProductTour.tsx            |  25 +-
+ app/src/features/tour/keyboard.ts             |  20 +
+ docs/PRODUCT_TOUR.md                          |   4 +-
+ 6 files changed, 755 insertions(+), 6 deletions(-)
+ create mode 100644 app/src/components/ProductTour.keyboard.test.tsx
+ create mode 100644 app/src/features/tour/keyboard.ts
+
+diff --git a/app/package-lock.json b/app/package-lock.json
+index d0926fe..bb59a66 100644
+--- a/app/package-lock.json
++++ b/app/package-lock.json
+@@ -27,6 +27,7 @@
+         "eslint-plugin-react-hooks": "^5.2.0",
+         "eslint-plugin-react-refresh": "^0.4.19",
+         "fake-indexeddb": "^6.2.5",
++        "jsdom": "30.0.1",
+         "tsx": "^4.19.3",
+         "typescript": "~5.8.3",
+         "typescript-eslint": "^8.29.0",
+@@ -34,6 +35,59 @@
+         "vitest": "^3.1.1"
+       }
+     },
++    "node_modules/@asamuzakjp/css-color": {
++      "version": "6.0.7",
++      "resolved": "https://registry.npmjs.org/@asamuzakjp/css-color/-/css-color-6.0.7.tgz",
++      "integrity": "sha512-vC/bk1Lz7Tn/EfU9/apOTBk80/8dyGyWMowPoV1tJ52muDGsDqt2HPT2klrFUiY60MQmQv9q8yIht15JnBgDGw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@csstools/css-calc": "^3.3.0",
++        "@csstools/css-color-parser": "^4.1.10",
++        "@csstools/css-parser-algorithms": "^4.0.0",
++        "@csstools/css-tokenizer": "^4.0.0",
++        "lru-cache": "^11.5.2"
++      },
++      "engines": {
++        "node": "^22.13.0 || >=24.0.0"
++      }
++    },
++    "node_modules/@asamuzakjp/css-color/node_modules/lru-cache": {
++      "version": "11.5.2",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz",
++      "integrity": "sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
++    "node_modules/@asamuzakjp/dom-selector": {
++      "version": "8.3.2",
++      "resolved": "https://registry.npmjs.org/@asamuzakjp/dom-selector/-/dom-selector-8.3.2.tgz",
++      "integrity": "sha512-93Z1N+BQNXysodoicpOIyNh2drHfz/CTf9nnT0FEx72GJcIiwgydD7tGAr78j41LsYn3hlRn+LdGPuBLn1Bl8Q==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "bidi-js": "^1.0.3",
++        "css-tree": "^3.2.1",
++        "is-potential-custom-element-name": "^1.0.1",
++        "lru-cache": "^11.5.2"
++      },
++      "engines": {
++        "node": "^22.13.0 || >=24.0.0"
++      }
++    },
++    "node_modules/@asamuzakjp/dom-selector/node_modules/lru-cache": {
++      "version": "11.5.2",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz",
++      "integrity": "sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
+     "node_modules/@babel/code-frame": {
+       "version": "7.29.7",
+       "resolved": "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.29.7.tgz",
+@@ -325,6 +379,159 @@
+         "node": ">=6.9.0"
+       }
+     },
++    "node_modules/@bramus/specificity": {
++      "version": "2.4.2",
++      "resolved": "https://registry.npmjs.org/@bramus/specificity/-/specificity-2.4.2.tgz",
++      "integrity": "sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "css-tree": "^3.0.0"
++      },
++      "bin": {
++        "specificity": "bin/cli.js"
++      }
++    },
++    "node_modules/@csstools/color-helpers": {
++      "version": "6.1.1",
++      "resolved": "https://registry.npmjs.org/@csstools/color-helpers/-/color-helpers-6.1.1.tgz",
++      "integrity": "sha512-gLNsunvwf3mCi5u5o46/Z/JcJMnhbHSaZ69rkgPzNM3J4s8hWwpPUQB6/tt0EDFyCiWzxANlx+2LJwpYj4zS1w==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT-0",
++      "engines": {
++        "node": ">=20.19.0"
++      }
++    },
++    "node_modules/@csstools/css-calc": {
++      "version": "3.3.0",
++      "resolved": "https://registry.npmjs.org/@csstools/css-calc/-/css-calc-3.3.0.tgz",
++      "integrity": "sha512-c5ihYsPkdG6JCkU2zTMm4+k6r7RXuGxtWYhu5DHMIiF1FHzrfmHL5so11AoFpUv/tu61xfcmT4AmKoFfMPoqdQ==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-parser-algorithms": "^4.0.0",
++        "@csstools/css-tokenizer": "^4.0.0"
++      }
++    },
++    "node_modules/@csstools/css-color-parser": {
++      "version": "4.2.0",
++      "resolved": "https://registry.npmjs.org/@csstools/css-color-parser/-/css-color-parser-4.2.0.tgz",
++      "integrity": "sha512-5+5LEmFuY1AjXdYhmgjTJogtQnP1evJ1zrBZGUNZ0thkpwnnmKxcHdAMn/OtFjAb25zA+jKDVYVRl+5G7rjv1A==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "@csstools/color-helpers": "^6.1.1",
++        "@csstools/css-calc": "^3.3.0"
++      },
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-parser-algorithms": "^4.0.0",
++        "@csstools/css-tokenizer": "^4.0.0"
++      }
++    },
++    "node_modules/@csstools/css-parser-algorithms": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/@csstools/css-parser-algorithms/-/css-parser-algorithms-4.0.0.tgz",
++      "integrity": "sha512-+B87qS7fIG3L5h3qwJ/IFbjoVoOe/bpOdh9hAjXbvx0o8ImEmUsGXN0inFOnk2ChCFgqkkGFQ+TpM5rbhkKe4w==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-tokenizer": "^4.0.0"
++      }
++    },
++    "node_modules/@csstools/css-syntax-patches-for-csstree": {
++      "version": "1.1.8",
++      "resolved": "https://registry.npmjs.org/@csstools/css-syntax-patches-for-csstree/-/css-syntax-patches-for-csstree-1.1.8.tgz",
++      "integrity": "sha512-CpMLjAvwQg3BL5S0IeqsZNMH7EQrEWi0kLKOC13ZBF0ZwERiLWlibNPJr8G1kdU3Ms/r2KiNrF81pUh2HwAHdg==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT-0",
++      "peerDependencies": {
++        "css-tree": "^3.2.1"
++      },
++      "peerDependenciesMeta": {
++        "css-tree": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@csstools/css-tokenizer": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/@csstools/css-tokenizer/-/css-tokenizer-4.0.0.tgz",
++      "integrity": "sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
++      }
++    },
+     "node_modules/@esbuild/aix-ppc64": {
+       "version": "0.28.1",
+       "resolved": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.28.1.tgz",
+@@ -911,6 +1118,24 @@
+         "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+       }
+     },
++    "node_modules/@exodus/bytes": {
++      "version": "1.15.1",
++      "resolved": "https://registry.npmjs.org/@exodus/bytes/-/bytes-1.15.1.tgz",
++      "integrity": "sha512-S6mL0yNB/Abt9Ei4tq8gDhcczc4S3+vQ4ra7vxnAf+YHC02srtqxKKZghx2Dq6p0e66THKwR6r8N6P95wEty7Q==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      },
++      "peerDependencies": {
++        "@noble/hashes": "^1.8.0 || ^2.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@noble/hashes": {
++          "optional": true
++        }
++      }
++    },
+     "node_modules/@humanfs/core": {
+       "version": "0.19.2",
+       "resolved": "https://registry.npmjs.org/@humanfs/core/-/core-0.19.2.tgz",
+@@ -2262,6 +2487,16 @@
+         "node": ">=6.0.0"
+       }
+     },
++    "node_modules/bidi-js": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmjs.org/bidi-js/-/bidi-js-1.0.3.tgz",
++      "integrity": "sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "require-from-string": "^2.0.2"
++      }
++    },
+     "node_modules/brace-expansion": {
+       "version": "1.1.18",
+       "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.18.tgz",
+@@ -2450,6 +2685,20 @@
+         "node": ">= 8"
+       }
+     },
++    "node_modules/css-tree": {
++      "version": "3.2.1",
++      "resolved": "https://registry.npmjs.org/css-tree/-/css-tree-3.2.1.tgz",
++      "integrity": "sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "mdn-data": "2.27.1",
++        "source-map-js": "^1.2.1"
++      },
++      "engines": {
++        "node": "^10 || ^12.20.0 || ^14.13.0 || >=15.0.0"
++      }
++    },
+     "node_modules/csstype": {
+       "version": "3.2.3",
+       "resolved": "https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz",
+@@ -2577,6 +2826,35 @@
+         "node": ">=12"
+       }
+     },
++    "node_modules/data-urls": {
++      "version": "7.0.0",
++      "resolved": "https://registry.npmjs.org/data-urls/-/data-urls-7.0.0.tgz",
++      "integrity": "sha512-23XHcCF+coGYevirZceTVD7NdJOqVn+49IHyxgszm+JIiHLoB2TkmPtsYkNWT1pvRSGkc35L6NHs0yHkN2SumA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "whatwg-mimetype": "^5.0.0",
++        "whatwg-url": "^16.0.0"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      }
++    },
++    "node_modules/data-urls/node_modules/whatwg-url": {
++      "version": "16.0.1",
++      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-16.0.1.tgz",
++      "integrity": "sha512-1to4zXBxmXHV3IiSSEInrreIlu02vUOvrhxJJH5vcxYTBDAx51cqZiKdyTxlecdKNSjj8EcxGBxNf6Vg+945gw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.11.0",
++        "tr46": "^6.0.0",
++        "webidl-conversions": "^8.0.1"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      }
++    },
+     "node_modules/debug": {
+       "version": "4.4.3",
+       "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+@@ -2595,6 +2873,13 @@
+         }
+       }
+     },
++    "node_modules/decimal.js": {
++      "version": "10.6.0",
++      "resolved": "https://registry.npmjs.org/decimal.js/-/decimal.js-10.6.0.tgz",
++      "integrity": "sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/decimal.js-light": {
+       "version": "2.5.1",
+       "resolved": "https://registry.npmjs.org/decimal.js-light/-/decimal.js-light-2.5.1.tgz",
+@@ -2635,6 +2920,19 @@
+       "dev": true,
+       "license": "ISC"
+     },
++    "node_modules/entities": {
++      "version": "8.0.0",
++      "resolved": "https://registry.npmjs.org/entities/-/entities-8.0.0.tgz",
++      "integrity": "sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "funding": {
++        "url": "https://github.com/fb55/entities?sponsor=1"
++      }
++    },
+     "node_modules/es-module-lexer": {
+       "version": "1.7.0",
+       "resolved": "https://registry.npmjs.org/es-module-lexer/-/es-module-lexer-1.7.0.tgz",
+@@ -3107,6 +3405,19 @@
+         "node": ">=8"
+       }
+     },
++    "node_modules/html-encoding-sniffer": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/html-encoding-sniffer/-/html-encoding-sniffer-6.0.0.tgz",
++      "integrity": "sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.6.0"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      }
++    },
+     "node_modules/iceberg-js": {
+       "version": "0.8.1",
+       "resolved": "https://registry.npmjs.org/iceberg-js/-/iceberg-js-0.8.1.tgz",
+@@ -3185,6 +3496,13 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/is-potential-custom-element-name": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/is-potential-custom-element-name/-/is-potential-custom-element-name-1.0.1.tgz",
++      "integrity": "sha512-bCYeRA2rVibKZd+s2625gGnGF/t7DSqDs4dP7CrLA1m7jKWz6pps0LpYLJN8Q64HtmPKJ1hrN3nzPNKFEKOUiQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/isexe": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/isexe/-/isexe-2.0.0.tgz",
+@@ -3221,6 +3539,57 @@
+         "js-yaml": "bin/js-yaml.js"
+       }
+     },
++    "node_modules/jsdom": {
++      "version": "30.0.1",
++      "resolved": "https://registry.npmjs.org/jsdom/-/jsdom-30.0.1.tgz",
++      "integrity": "sha512-52v7mUVUfNQVYYqE1lcdaymWL0njO7lTLUog6ZvW2U5KsbiLk/GnZlVJ+qx0xfNJZ6Gn+KSpPNE52vurbxZwrA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@asamuzakjp/css-color": "^6.0.5",
++        "@asamuzakjp/dom-selector": "^8.3.0",
++        "@bramus/specificity": "^2.4.2",
++        "@csstools/css-syntax-patches-for-csstree": "^1.1.7",
++        "@exodus/bytes": "^1.15.1",
++        "css-tree": "^3.2.1",
++        "data-urls": "^7.0.0",
++        "decimal.js": "^10.6.0",
++        "html-encoding-sniffer": "^6.0.0",
++        "is-potential-custom-element-name": "^1.0.1",
++        "lru-cache": "^11.5.2",
++        "parse5": "^8.0.1",
++        "saxes": "^6.0.0",
++        "symbol-tree": "^3.2.4",
++        "tough-cookie": "^6.0.2",
++        "undici": "^8.9.0",
++        "w3c-xmlserializer": "^5.0.0",
++        "webidl-conversions": "^8.0.1",
++        "whatwg-mimetype": "^5.0.0",
++        "whatwg-url": "^17.1.0",
++        "xml-name-validator": "^5.0.0"
++      },
++      "engines": {
++        "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
++      },
++      "peerDependencies": {
++        "canvas": "^3.2.3"
++      },
++      "peerDependenciesMeta": {
++        "canvas": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/jsdom/node_modules/lru-cache": {
++      "version": "11.5.2",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz",
++      "integrity": "sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
+     "node_modules/jsesc": {
+       "version": "3.1.0",
+       "resolved": "https://registry.npmjs.org/jsesc/-/jsesc-3.1.0.tgz",
+@@ -3369,6 +3738,13 @@
+         "@jridgewell/sourcemap-codec": "^1.5.5"
+       }
+     },
++    "node_modules/mdn-data": {
++      "version": "2.27.1",
++      "resolved": "https://registry.npmjs.org/mdn-data/-/mdn-data-2.27.1.tgz",
++      "integrity": "sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==",
++      "dev": true,
++      "license": "CC0-1.0"
++    },
+     "node_modules/minimatch": {
+       "version": "3.1.5",
+       "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-3.1.5.tgz",
+@@ -3512,6 +3888,19 @@
+         "node": ">=6"
+       }
+     },
++    "node_modules/parse5": {
++      "version": "8.0.1",
++      "resolved": "https://registry.npmjs.org/parse5/-/parse5-8.0.1.tgz",
++      "integrity": "sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "entities": "^8.0.0"
++      },
++      "funding": {
++        "url": "https://github.com/inikulin/parse5?sponsor=1"
++      }
++    },
+     "node_modules/path-exists": {
+       "version": "4.0.0",
+       "resolved": "https://registry.npmjs.org/path-exists/-/path-exists-4.0.0.tgz",
+@@ -3736,6 +4125,16 @@
+         "decimal.js-light": "^2.4.1"
+       }
+     },
++    "node_modules/require-from-string": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz",
++      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
+     "node_modules/resolve-from": {
+       "version": "4.0.0",
+       "resolved": "https://registry.npmjs.org/resolve-from/-/resolve-from-4.0.0.tgz",
+@@ -3792,6 +4191,19 @@
+         "fsevents": "~2.3.2"
+       }
+     },
++    "node_modules/saxes": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/saxes/-/saxes-6.0.0.tgz",
++      "integrity": "sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "xmlchars": "^2.2.0"
++      },
++      "engines": {
++        "node": ">=v12.22.7"
++      }
++    },
+     "node_modules/scheduler": {
+       "version": "0.27.0",
+       "resolved": "https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz",
+@@ -3908,6 +4320,13 @@
+         "node": ">=8"
+       }
+     },
++    "node_modules/symbol-tree": {
++      "version": "3.2.4",
++      "resolved": "https://registry.npmjs.org/symbol-tree/-/symbol-tree-3.2.4.tgz",
++      "integrity": "sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/tiny-invariant": {
+       "version": "1.3.3",
+       "resolved": "https://registry.npmjs.org/tiny-invariant/-/tiny-invariant-1.3.3.tgz",
+@@ -3975,6 +4394,52 @@
+         "node": ">=14.0.0"
+       }
+     },
++    "node_modules/tldts": {
++      "version": "7.4.10",
++      "resolved": "https://registry.npmjs.org/tldts/-/tldts-7.4.10.tgz",
++      "integrity": "sha512-GgouD1B+sWwvkaEq8vXC15DjQitxbvs12oIXELpconwm+Tg3zfcEv4jgzq3vtKverDXsg3VI8aRgNL2Nra0Iog==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tldts-core": "^7.4.10"
++      },
++      "bin": {
++        "tldts": "bin/cli.js"
++      }
++    },
++    "node_modules/tldts-core": {
++      "version": "7.4.10",
++      "resolved": "https://registry.npmjs.org/tldts-core/-/tldts-core-7.4.10.tgz",
++      "integrity": "sha512-KnQjp53ZekKgm/r3l+u8kJGGzYgrWdP8+Mql7a4vijh2WE0IrZWspQj/TpTxDho/YxO+AnOZnIjQcCD+q6iJsw==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/tough-cookie": {
++      "version": "6.0.2",
++      "resolved": "https://registry.npmjs.org/tough-cookie/-/tough-cookie-6.0.2.tgz",
++      "integrity": "sha512-exgYmnmL/sJpR3upZfXG5PoatXQii55xAiXGXzY+sROLZ/Y+SLcp9PgJNI9Vz37HpQ74WvDcLT8eqm+kV3FzrA==",
++      "dev": true,
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "tldts": "^7.0.5"
++      },
++      "engines": {
++        "node": ">=16"
++      }
++    },
++    "node_modules/tr46": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/tr46/-/tr46-6.0.0.tgz",
++      "integrity": "sha512-bLVMLPtstlZ4iMQHpFHTR7GAGj2jxi8Dg0s2h2MafAE4uSWF98FC/3MomU51iQAMf8/qDUbKWf5GxuvvVcXEhw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "punycode": "^2.3.1"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
+     "node_modules/ts-api-utils": {
+       "version": "2.5.0",
+       "resolved": "https://registry.npmjs.org/ts-api-utils/-/ts-api-utils-2.5.0.tgz",
+@@ -4064,6 +4529,16 @@
+         "typescript": ">=4.8.4 <6.1.0"
+       }
+     },
++    "node_modules/undici": {
++      "version": "8.10.0",
++      "resolved": "https://registry.npmjs.org/undici/-/undici-8.10.0.tgz",
++      "integrity": "sha512-HvltHd7avK13QIw/oLe4qoOLyoVSoafqJ2jYOrtMRBkbYT31eiBQ8O0ehRKZiEZCMEyLFQNIADpgCWC5fALvYQ==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=22.19.0"
++      }
++    },
+     "node_modules/undici-types": {
+       "version": "6.21.0",
+       "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-6.21.0.tgz",
+@@ -4789,6 +5264,54 @@
+         }
+       }
+     },
++    "node_modules/w3c-xmlserializer": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/w3c-xmlserializer/-/w3c-xmlserializer-5.0.0.tgz",
++      "integrity": "sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "xml-name-validator": "^5.0.0"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/webidl-conversions": {
++      "version": "8.0.1",
++      "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-8.0.1.tgz",
++      "integrity": "sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/whatwg-mimetype": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/whatwg-mimetype/-/whatwg-mimetype-5.0.0.tgz",
++      "integrity": "sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/whatwg-url": {
++      "version": "17.1.0",
++      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-17.1.0.tgz",
++      "integrity": "sha512-3GeworPmc2ZfEEHP7lEbUfBX/L75wdEsi0rLNhXcXxnoN5jyq0SL5gCy06SGW2cyTIZdTvWIDQNQoza++vKeaw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.15.1",
++        "tr46": "^6.0.0",
++        "webidl-conversions": "^8.0.1"
++      },
++      "engines": {
++        "node": "^22.14.0 || >=24.0.0"
++      }
++    },
+     "node_modules/which": {
+       "version": "2.0.2",
+       "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
+@@ -4832,6 +5355,23 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/xml-name-validator": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/xml-name-validator/-/xml-name-validator-5.0.0.tgz",
++      "integrity": "sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/xmlchars": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/xmlchars/-/xmlchars-2.2.0.tgz",
++      "integrity": "sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/yallist": {
+       "version": "3.1.1",
+       "resolved": "https://registry.npmjs.org/yallist/-/yallist-3.1.1.tgz",
+diff --git a/app/package.json b/app/package.json
+index 2b9038d..331f7c0 100644
+--- a/app/package.json
++++ b/app/package.json
+@@ -32,6 +32,7 @@
+     "eslint-plugin-react-hooks": "^5.2.0",
+     "eslint-plugin-react-refresh": "^0.4.19",
+     "fake-indexeddb": "^6.2.5",
++    "jsdom": "30.0.1",
+     "tsx": "^4.19.3",
+     "typescript": "~5.8.3",
+     "typescript-eslint": "^8.29.0",
+diff --git a/app/src/components/ProductTour.keyboard.test.tsx b/app/src/components/ProductTour.keyboard.test.tsx
+new file mode 100644
+index 0000000..3b362d4
+--- /dev/null
++++ b/app/src/components/ProductTour.keyboard.test.tsx
+@@ -0,0 +1,171 @@
++// @vitest-environment jsdom
++
++import { act } from 'react';
++import { createRoot, type Root } from 'react-dom/client';
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { createProductTourState, productTourSteps } from '../features/tour/product-tour';
++import { ProductTour, ProductTourInvitation } from './ProductTour';
++
++type TourCallbacks = {
++  onStep: (step: number) => void | Promise<void>;
++  onPause: () => void | Promise<void>;
++  onFinish: () => void | Promise<void>;
++};
++
++let root: Root;
++let container: HTMLDivElement;
++
++function press(target: Element, key: string, modifiers: KeyboardEventInit = {}) {
++  target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...modifiers }));
++}
++
++async function renderTour(callbacks: Partial<TourCallbacks> = {}, step = 1) {
++  const anchor = document.createElement('div');
++  anchor.dataset.tourId = productTourSteps[step].target;
++  document.body.append(anchor);
++  const handlers: TourCallbacks = {
++    onStep: callbacks.onStep || vi.fn(),
++    onPause: callbacks.onPause || vi.fn(),
++    onFinish: callbacks.onFinish || vi.fn(),
++  };
++  await act(async () => {
++    root.render(<ProductTour
++      state={createProductTourState('in_progress', step, new Date('2026-08-15T12:00:00Z'))}
++      {...handlers}
++    />);
++  });
++  await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 0)); });
++  const card = container.querySelector<HTMLElement>('.product-tour-card');
++  if (!card) throw new Error('Product Tour card did not render.');
++  return { card, handlers };
++}
++
++beforeEach(() => {
++  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
++  Object.defineProperty(window, 'matchMedia', {
++    configurable: true,
++    value: vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
++  });
++  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
++  container = document.createElement('div');
++  document.body.append(container);
++  root = createRoot(container);
++  window.location.hash = '#/';
++});
++
++afterEach(async () => {
++  await act(async () => root.unmount());
++  document.body.replaceChildren();
++  vi.restoreAllMocks();
++});
++
++describe('Product Tour keyboard safety', () => {
++  it('moves forward and backward when focus is on the Tour', async () => {
++    const onStep = vi.fn();
++    const { card } = await renderTour({ onStep });
++    expect(document.activeElement).toBe(card);
++
++    await act(async () => { press(card, 'ArrowRight'); });
++    expect(onStep).toHaveBeenLastCalledWith(2);
++
++    await act(async () => { press(card, 'ArrowLeft'); });
++    expect(onStep).toHaveBeenLastCalledWith(0);
++  });
++
++  it.each([
++    ['input', () => document.createElement('input'), 'ArrowRight'],
++    ['textarea', () => document.createElement('textarea'), 'ArrowLeft'],
++    ['select', () => document.createElement('select'), 'ArrowRight'],
++    ['contenteditable', () => {
++      const editable = document.createElement('div');
++      editable.setAttribute('contenteditable', 'true');
++      const child = document.createElement('span');
++      editable.append(child);
++      return child;
++    }, 'ArrowLeft'],
++  ])('leaves %s arrow-key behavior with the editable route control', async (_label, createTarget, key) => {
++    const onStep = vi.fn();
++    await renderTour({ onStep });
++    const target = createTarget();
++    document.body.append(target.parentElement || target);
++
++    await act(async () => { press(target, key); });
++    expect(onStep).not.toHaveBeenCalled();
++  });
++
++  it.each([
++    ['Meta', { metaKey: true }],
++    ['Ctrl', { ctrlKey: true }],
++    ['Alt', { altKey: true }],
++  ])('preserves %s + Arrow shortcuts', async (_label, modifiers) => {
++    const onStep = vi.fn();
++    const { card } = await renderTour({ onStep });
++
++    await act(async () => { press(card, 'ArrowRight', modifiers); });
++    expect(onStep).not.toHaveBeenCalled();
++  });
++
++  it('keeps Escape mapped to Pause', async () => {
++    const onPause = vi.fn();
++    const { card } = await renderTour({ onPause });
++
++    await act(async () => { press(card, 'Escape'); });
++    expect(onPause).toHaveBeenCalledTimes(1);
++  });
++
++  it('shares a synchronous lock between button and keyboard transitions, then unlocks', async () => {
++    let settle!: () => void;
++    const pending = new Promise<void>((resolve) => { settle = resolve; });
++    const onStep = vi.fn(() => pending);
++    const { card } = await renderTour({ onStep });
++    const next = container.querySelector<HTMLButtonElement>('button.primary');
++    if (!next) throw new Error('Next button did not render.');
++
++    await act(async () => {
++      next.click();
++      press(card, 'ArrowRight');
++    });
++    expect(onStep).toHaveBeenCalledTimes(1);
++
++    await act(async () => { settle(); await pending; });
++    await act(async () => { press(card, 'ArrowRight'); });
++    expect(onStep).toHaveBeenCalledTimes(2);
++  });
++
++  it('releases the transition lock after a failed save', async () => {
++    const onStep = vi.fn()
++      .mockRejectedValueOnce(new Error('Preference save failed.'))
++      .mockResolvedValueOnce(undefined);
++    const { card } = await renderTour({ onStep });
++
++    await act(async () => { press(card, 'ArrowRight'); await Promise.resolve(); });
++    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Preference save failed.');
++
++    await act(async () => { press(card, 'ArrowRight'); await Promise.resolve(); });
++    expect(onStep).toHaveBeenCalledTimes(2);
++  });
++
++  it('serializes the first-use Take and Skip actions', async () => {
++    let settle!: () => void;
++    const pending = new Promise<void>((resolve) => { settle = resolve; });
++    const onTake = vi.fn(() => pending);
++    const onSkip = vi.fn();
++    await act(async () => {
++      root.render(<ProductTourInvitation onTake={onTake} onSkip={onSkip} />);
++    });
++    const take = container.querySelector<HTMLButtonElement>('button.primary');
++    const skip = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes('Skip'));
++    if (!take || !skip) throw new Error('Product Tour invitation actions did not render.');
++
++    await act(async () => {
++      take.click();
++      skip.click();
++    });
++    expect(onTake).toHaveBeenCalledTimes(1);
++    expect(onSkip).not.toHaveBeenCalled();
++
++    await act(async () => { settle(); await pending; });
++    await act(async () => { skip.click(); });
++    expect(onSkip).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/app/src/components/ProductTour.tsx b/app/src/components/ProductTour.tsx
+index c8c5a45..a2a9ea9 100644
+--- a/app/src/components/ProductTour.tsx
++++ b/app/src/components/ProductTour.tsx
+@@ -1,6 +1,7 @@
+ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+ import { ArrowLeft, ArrowRight, Check, Compass, X } from 'lucide-react';
+ import { catalystHash, navigate } from '../config/navigation';
++import { hasTourArrowModifier, isEditableTourKeyTarget } from '../features/tour/keyboard';
+ import { productTourSteps, type ProductTourState } from '../features/tour/product-tour';
+ 
+ type TargetBox = { top: number; left: number; width: number; height: number };
+@@ -18,11 +19,20 @@ function targetBox(element: HTMLElement): TargetBox {
+ 
+ export function ProductTourInvitation({ busy, onTake, onSkip }: { busy?: boolean; onTake: () => void | Promise<void>; onSkip: () => void | Promise<void> }) {
+   const dialog = useRef<HTMLElement>(null);
++  const transitionLock = useRef(false);
++  const [transitionBusy, setTransitionBusy] = useState(false);
++  const run = useCallback(async (action: () => void | Promise<void>) => {
++    if (transitionLock.current || busy) return;
++    transitionLock.current = true; setTransitionBusy(true);
++    try { await action(); }
++    finally { transitionLock.current = false; setTransitionBusy(false); }
++  }, [busy]);
++  const saving = Boolean(busy || transitionBusy);
+   useEffect(() => {
+     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+     const timer = window.setTimeout(() => dialog.current?.querySelector<HTMLElement>('.primary')?.focus(), 0);
+     const keydown = (event: KeyboardEvent) => {
+-      if (event.key === 'Escape' && !busy) { event.preventDefault(); void onSkip(); return; }
++      if (event.key === 'Escape') { event.preventDefault(); void run(onSkip); return; }
+       if (event.key !== 'Tab') return;
+       const items = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])') || []);
+       if (!items.length) return;
+@@ -32,14 +42,14 @@ export function ProductTourInvitation({ busy, onTake, onSkip }: { busy?: boolean
+     };
+     document.addEventListener('keydown', keydown);
+     return () => { window.clearTimeout(timer); document.removeEventListener('keydown', keydown); previous?.focus(); };
+-  }, [busy, onSkip]);
++  }, [onSkip, run]);
+   return <div className="tour-invitation-backdrop" role="presentation">
+     <section className="tour-invitation" role="dialog" aria-modal="true" aria-labelledby="tour-invitation-title" aria-describedby="tour-invitation-description" ref={dialog}>
+       <span className="tour-invitation-icon" aria-hidden="true"><Compass /></span>
+       <span className="eyebrow">A quick orientation</span>
+       <h2 id="tour-invitation-title">See how OJ fits together</h2>
+       <p id="tour-invitation-description">Take a short, read-only tour of the catalyst-first workflow. It creates no research, consumes no provider credits, and never touches a brokerage.</p>
+-      <footer><button disabled={busy} onClick={() => void onSkip()}>Skip for Now</button><button className="primary" disabled={busy} onClick={() => void onTake()}>{busy ? 'Saving' : 'Take a Tour'} <ArrowRight size={16} /></button></footer>
++      <footer><button disabled={saving} onClick={() => void run(onSkip)}>Skip for Now</button><button className="primary" disabled={saving} onClick={() => void run(onTake)}>{saving ? 'Saving' : 'Take a Tour'} <ArrowRight size={16} /></button></footer>
+     </section>
+   </div>;
+ }
+@@ -53,16 +63,19 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
+ }) {
+   const step = productTourSteps[state.step] || productTourSteps[0];
+   const card = useRef<HTMLElement>(null);
++  const transitionLock = useRef(false);
+   const [box, setBox] = useState<TargetBox>();
+   const [missing, setMissing] = useState(false);
+   const [busy, setBusy] = useState(false);
+   const [message, setMessage] = useState('');
+ 
+   const go = useCallback(async (action: () => void | Promise<void>) => {
++    if (transitionLock.current) return;
++    transitionLock.current = true;
+     setBusy(true); setMessage('');
+     try { await action(); }
+     catch (error) { setMessage(error instanceof Error ? error.message : 'Tour progress could not be saved.'); }
+-    finally { setBusy(false); }
++    finally { transitionLock.current = false; setBusy(false); }
+   }, []);
+ 
+   useLayoutEffect(() => {
+@@ -87,7 +100,9 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
+   useEffect(() => {
+     const timer = window.setTimeout(() => card.current?.focus(), 0);
+     const keydown = (event: KeyboardEvent) => {
+-      if (event.key === 'Escape') { event.preventDefault(); void go(onPause); }
++      if (event.key === 'Escape') { event.preventDefault(); void go(onPause); return; }
++      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
++      if (hasTourArrowModifier(event) || isEditableTourKeyTarget(event.target)) return;
+       if (event.key === 'ArrowLeft' && state.step > 0) { event.preventDefault(); void go(() => onStep(state.step - 1)); }
+       if (event.key === 'ArrowRight' && state.step < productTourSteps.length - 1) { event.preventDefault(); void go(() => onStep(state.step + 1)); }
+     };
+diff --git a/app/src/features/tour/keyboard.ts b/app/src/features/tour/keyboard.ts
+new file mode 100644
+index 0000000..bf91f73
+--- /dev/null
++++ b/app/src/features/tour/keyboard.ts
+@@ -0,0 +1,20 @@
++const TEXT_ENTRY_ROLES = new Set(['combobox', 'searchbox', 'spinbutton', 'textbox']);
++
++export function isEditableTourKeyTarget(target: EventTarget | null): boolean {
++  if (typeof Element === 'undefined' || !(target instanceof Element)) return false;
++
++  let element: Element | null = target;
++  while (element) {
++    if (element.matches('input, textarea, select')) return true;
++    const contentEditable = element.getAttribute('contenteditable');
++    if (contentEditable !== null) return contentEditable.toLowerCase() !== 'false';
++    if (TEXT_ENTRY_ROLES.has(element.getAttribute('role')?.toLowerCase() || '')) return true;
++    element = element.parentElement;
++  }
++
++  return false;
++}
++
++export function hasTourArrowModifier(event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey'>): boolean {
++  return event.altKey || event.ctrlKey || event.metaKey;
++}
+diff --git a/docs/PRODUCT_TOUR.md b/docs/PRODUCT_TOUR.md
+index f494eb2..03f2941 100644
+--- a/docs/PRODUCT_TOUR.md
++++ b/docs/PRODUCT_TOUR.md
+@@ -41,7 +41,9 @@ The controller navigates directly by route; it never assumes a mobile shortcut p
+ 
+ Desktop uses an anchored popover and highlighted region. Narrow viewports use a bottom sheet so the explanation stays readable above safe-area insets. Target bounds are remeasured on scroll and resize. Reduced-motion preferences disable tour animation and smooth scrolling.
+ 
+-The first-use dialog moves focus into its choices, traps Tab within the modal, restores prior focus, and treats Escape as **Skip for Now**. The active tour is non-modal: its Back, Next, Pause, and Finish controls are keyboard reachable; Left/Right arrows move between steps; Escape pauses; route content remains available. Missing targets are announced in the callout rather than producing an invisible or off-screen control.
++The first-use dialog moves focus into its choices, traps Tab within the modal, restores prior focus, and treats Escape as **Skip for Now**. The active tour is non-modal: its Back, Next, Pause, and Finish controls are keyboard reachable; Left/Right arrows move between steps; Escape pauses; route content remains available. Arrow navigation leaves native caret, selection, and chooser behavior intact when the event begins in an input, textarea, select, contenteditable region, or equivalent text-entry role. Meta, Ctrl, and Alt arrow shortcuts are also left to the browser and operating system.
++
++All Tour actions share a synchronous transition lock. A preference save must settle before another button or document-level keyboard action can begin, including on the first-use Take/Skip choice. The lock releases after both successful and failed saves so the Tour remains usable. Missing targets are announced in the callout rather than producing an invisible or off-screen control.
+ 
+ ## Product boundary
+ 
+-- 
+2.50.1 (Apple Git-155)
+

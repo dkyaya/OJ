@@ -44,4 +44,13 @@ describe('Trade workflow presentation', () => {
     expect(html).toContain('Locked Forecast');
     expect(html).toContain('Research Context');
   });
+
+  it('keeps a Trade Check-In in monitoring and history', () => {
+    const withCheckin: Position = { ...activeTrade, checkins: [{ id: 'checkin', tradeId: activeTrade.id, ideaId: activeTrade.ideaId, thesisHealth: 'weaker', checkedAt: '2026-08-14T14:00:00Z', whatChanged: 'Synthetic Trade monitoring update.', priceChanged: true, catalystChanged: false, volatilityChanged: false, macroChanged: false, plannedExitState: 'reassess', invalidationOccurred: false, managementView: 'Wait for confirmation.', data: {} }] };
+    const html = renderToStaticMarkup(<TradesPage workspace={{ ...demoWorkspace, positions: [withCheckin] }} onSaved={() => undefined} onDebrief={() => undefined} />);
+    expect(html).toContain('Current Monitoring');
+    expect(html).toContain('Synthetic Trade monitoring update.');
+    expect(html).toContain('Wait for confirmation.');
+    expect(html).toContain('Add Check-In');
+  });
 });

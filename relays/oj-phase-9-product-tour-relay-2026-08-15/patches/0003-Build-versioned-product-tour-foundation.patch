@@ -1,0 +1,567 @@
+From 706cd08dbe340cdc68471c0da3599dcd53bdeddc Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Sat, 15 Aug 2026 17:49:25 -0400
+Subject: [PATCH 3/4] Build versioned product tour foundation
+
+---
+ app/src/App.tsx                               |  40 +++++-
+ app/src/components/ProductTour.test.tsx       |  31 +++++
+ app/src/components/ProductTour.tsx            | 120 ++++++++++++++++++
+ .../tour/product-tour-boundary.test.ts        |  20 +++
+ app/src/features/tour/product-tour.test.ts    |  47 +++++++
+ app/src/features/tour/product-tour.ts         | 105 +++++++++++++++
+ app/src/main.tsx                              |   1 +
+ app/src/pages/SettingsPage.test.tsx           |   8 ++
+ app/src/pages/SettingsPage.tsx                |   9 +-
+ app/src/styles/product-tour.css               |   9 ++
+ 10 files changed, 382 insertions(+), 8 deletions(-)
+ create mode 100644 app/src/components/ProductTour.test.tsx
+ create mode 100644 app/src/components/ProductTour.tsx
+ create mode 100644 app/src/features/tour/product-tour-boundary.test.ts
+ create mode 100644 app/src/features/tour/product-tour.test.ts
+ create mode 100644 app/src/features/tour/product-tour.ts
+ create mode 100644 app/src/styles/product-tour.css
+
+diff --git a/app/src/App.tsx b/app/src/App.tsx
+index f83f5a9..62aed07 100644
+--- a/app/src/App.tsx
++++ b/app/src/App.tsx
+@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import { LogOut } from 'lucide-react';
+ import { AuthScreen } from './components/AuthScreen';
+ import { LoadingScreen } from './components/LoadingScreen';
++import { ProductTour, ProductTourInvitation } from './components/ProductTour';
+ import { AppShell } from './components/layout/AppShell';
+ import { Workflow } from './components/Workflow';
+ import { navigate, normalizePath, routeMotionDirection, type AppPath, type RouteMotionDirection } from './config/navigation';
+-import { loadWorkspace, emptyWorkspace } from './data/workspace';
++import { loadWorkspace, emptyWorkspace, savePreferences } from './data/workspace';
++import { createProductTourState, productTourPreferenceData, productTourSteps, readProductTourState, type ProductTourState, type ProductTourStatus } from './features/tour/product-tour';
+ import { authModeFromUrl, type AuthMode } from './lib/auth';
+ import { remainingSplashTime } from './lib/loading';
+ import { supabase } from './lib/supabase';
+@@ -32,7 +34,9 @@ export default function App() {
+   const [route, setRoute] = useState<AppPath>(routeFromHash); const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+   const [routeMotion, setRouteMotion] = useState<RouteMotionDirection>('neutral');
+   const [authMode, setAuthMode] = useState<AuthMode>(() => authModeFromUrl(location.href)); const [workflow, setWorkflow] = useState<'ticker' | 'catalyst' | null>(null); const [tradeIdeaId, setTradeIdeaId] = useState<string>(); const [journalTradeId, setJournalTradeId] = useState<string>(); const [dark, setDark] = useState(() => localStorage.getItem('oj-theme') !== 'light');
++  const [tourActive, setTourActive] = useState(false); const [tourBusy, setTourBusy] = useState(false); const [tourOverride, setTourOverride] = useState<ProductTourState>();
+   const splashStartedAt = useRef(performance.now()); const splashCompletionScheduled = useRef(false); const authModeRef = useRef(authMode); const refreshRequest = useRef(0); const routeRef = useRef(route);
++  const workspaceRef = useRef(workspace);
+   const finishInitialLoad = useCallback(() => {
+     if (splashCompletionScheduled.current) return;
+     splashCompletionScheduled.current = true;
+@@ -44,7 +48,7 @@ export default function App() {
+     try {
+       const next = await loadWorkspace();
+       if (request !== refreshRequest.current) return;
+-      setWorkspace(next); setError('');
++      workspaceRef.current = next; setWorkspace(next); setError('');
+       if (next.preferences?.theme === 'dark') setDark(true); if (next.preferences?.theme === 'light') setDark(false);
+     } catch (cause) { if (request === refreshRequest.current) setError(cause instanceof Error ? cause.message : 'OJ could not load.'); }
+     finally { if (request === refreshRequest.current) finishInitialLoad(); }
+@@ -53,6 +57,7 @@ export default function App() {
+ 
+   useEffect(() => { const hash = () => { const next = routeFromHash(); setRouteMotion(routeMotionDirection(routeRef.current, next)); routeRef.current = next; setRoute(next); }; window.addEventListener('hashchange', hash); return () => window.removeEventListener('hashchange', hash); }, []);
+   useEffect(() => { authModeRef.current = authMode; }, [authMode]);
++  useEffect(() => { workspaceRef.current = workspace; }, [workspace]);
+   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; localStorage.setItem('oj-theme', dark ? 'dark' : 'light'); }, [dark]);
+   useEffect(() => {
+     void refresh();
+@@ -69,7 +74,7 @@ export default function App() {
+         refreshRequest.current += 1;
+         const previousOwner = localStorage.getItem('oj-cache-owner');
+         if (previousOwner) void clearOwnerDrafts(previousOwner);
+-        localStorage.removeItem('oj-cache-owner'); setWorkspace(emptyWorkspace()); setWorkflow(null); if (authModeRef.current !== 'activate') setAuthMode('sign-in');
++        localStorage.removeItem('oj-cache-owner'); const cleared = emptyWorkspace(); workspaceRef.current = cleared; setWorkspace(cleared); setWorkflow(null); setTourActive(false); setTourOverride(undefined); if (authModeRef.current !== 'activate') setAuthMode('sign-in');
+       }
+       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') void refresh();
+     });
+@@ -77,6 +82,28 @@ export default function App() {
+   }, [refresh]);
+ 
+   const openRisk = useMemo(() => workspace.positions.filter((item) => item.status === 'active').reduce((sum, item) => sum + (item.maxRisk || 0), 0), [workspace.positions]);
++  const storedTourState = readProductTourState(workspace.preferences?.data); const tourState = tourOverride || storedTourState;
++  useEffect(() => { if (tourOverride && storedTourState.status === tourOverride.status && storedTourState.step === tourOverride.step && storedTourState.version === tourOverride.version) setTourOverride(undefined); }, [storedTourState.status, storedTourState.step, storedTourState.version, tourOverride]);
++  const persistTourState = useCallback(async (next: ProductTourState) => {
++    const current = workspaceRef.current; const source = current.preferences;
++    const input = {
++      theme: source?.theme || (dark ? 'dark' as const : 'light' as const),
++      calendarView: source?.calendarView || 'month' as const,
++      compactCards: source?.compactCards || false,
++      mobileNavigation: source?.mobileNavigation || ['/' as const, '/catalysts' as const, '/ideas' as const, '/trades' as const],
++      data: productTourPreferenceData(source?.data, next),
++    };
++    const saved = await savePreferences(input, source?.revision) as Record<string, unknown>;
++    const updated = { ...current, preferences: { ...input, revision: Number(saved.revision || (source?.revision || 0) + 1) } };
++    workspaceRef.current = updated; setWorkspace(updated); await refresh();
++  }, [dark, refresh]);
++  const transitionTour = useCallback(async (status: ProductTourStatus, step: number) => {
++    const next = createProductTourState(status, step); setTourOverride(next);
++    try { await persistTourState(next); }
++    catch (cause) { setTourOverride(undefined); throw cause; }
++  }, [persistTourState]);
++  const startTour = useCallback(async (step = 0) => { setTourBusy(true); try { await transitionTour('in_progress', step); setTourActive(true); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Tour progress could not be saved.'); } finally { setTourBusy(false); } }, [transitionTour]);
++  const skipTour = useCallback(async () => { setTourBusy(true); try { await transitionTour('skipped', 0); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Tour preference could not be saved.'); } finally { setTourBusy(false); } }, [transitionTour]);
+   if (loading) return <LoadingScreen />;
+   const callbackFlow = authMode === 'activate' || authMode === 'reset';
+   if ((!workspace.authenticated && !workspace.demo) || callbackFlow) return <AuthScreen mode={authMode} authenticated={workspace.authenticated} onMode={setAuthMode} onComplete={finishAuth} onLocalStateCleared={() => { setWorkspace(emptyWorkspace()); setWorkflow(null); }} />;
+@@ -89,7 +116,10 @@ export default function App() {
+           : route === '/journal' ? <JournalPage workspace={workspace} onSaved={refresh} initialTradeId={journalTradeId} onInitialTradeConsumed={() => setJournalTradeId(undefined)} />
+             : route === '/insights' ? <InsightsPage workspace={workspace} />
+               : route === '/workspace' ? <WorkspacePage workspace={workspace} />
+-                : <SettingsPage workspace={workspace} onSaved={refresh} />;
++                : <SettingsPage workspace={workspace} onSaved={refresh} tourState={tourState} onStartTour={(step) => void startTour(step)} />;
+   const profile = workspace.profile;
+-  return <><AppShell current={route} dark={dark} mobileNavigation={workspace.preferences?.mobileNavigation} userId={profile?.id} email={profile?.email} onRefresh={refresh} onTheme={() => setDark(!dark)} onBuildIdea={() => profile && setWorkflow('ticker')}><div className="route-stage" data-motion={routeMotion} key={route}>{error && <div className="app-error" role="alert">{error}</div>}{workspace.demo && <div className="demo-banner">Synthetic preview data</div>}{page}</div></AppShell>{profile && <Workflow open={workflow !== null} onClose={() => setWorkflow(null)} ownerId={profile.id} initialMode={workflow || 'ticker'} catalysts={workspace.catalysts.map((item) => ({ id: item.id, event: item.event, date: item.date }))} maximumRisk={workspace.policy?.maximumOpenRisk} openRisk={openRisk} />}</>;
++  return <><AppShell current={route} dark={dark} mobileNavigation={workspace.preferences?.mobileNavigation} userId={profile?.id} email={profile?.email} onRefresh={refresh} onTheme={() => setDark(!dark)} onBuildIdea={() => profile && setWorkflow('ticker')}><div className="route-stage" data-motion={routeMotion} key={route}>{error && <div className="app-error" role="alert">{error}</div>}{workspace.demo && <div className="demo-banner">Synthetic preview data</div>}{page}</div></AppShell>{profile && <Workflow open={workflow !== null} onClose={() => setWorkflow(null)} ownerId={profile.id} initialMode={workflow || 'ticker'} catalysts={workspace.catalysts.map((item) => ({ id: item.id, event: item.event, date: item.date }))} maximumRisk={workspace.policy?.maximumOpenRisk} openRisk={openRisk} />}
++    {!workspace.demo && tourState.status === 'not_started' && !tourActive && <ProductTourInvitation busy={tourBusy} onTake={() => startTour(0)} onSkip={skipTour} />}
++    {tourActive && <ProductTour state={tourState} catalystId={workspace.catalysts[0]?.id} onStep={(step) => transitionTour('in_progress', step)} onPause={async () => { await transitionTour('in_progress', tourState.step); setTourActive(false); }} onFinish={async () => { await transitionTour('completed', productTourSteps.length - 1); setTourActive(false); }} />}
++  </>;
+ }
+diff --git a/app/src/components/ProductTour.test.tsx b/app/src/components/ProductTour.test.tsx
+new file mode 100644
+index 0000000..e877356
+--- /dev/null
++++ b/app/src/components/ProductTour.test.tsx
+@@ -0,0 +1,31 @@
++import { renderToStaticMarkup } from 'react-dom/server';
++import { describe, expect, it } from 'vitest';
++import { createProductTourState } from '../features/tour/product-tour';
++import { ProductTour, ProductTourInvitation } from './ProductTour';
++
++describe('product tour presentation', () => {
++  it('offers explicit first-use consent without implying a domain write', () => {
++    const html = renderToStaticMarkup(<ProductTourInvitation onTake={() => undefined} onSkip={() => undefined} />);
++    expect(html).toContain('Take a Tour');
++    expect(html).toContain('Skip for Now');
++    expect(html).toContain('creates no research');
++    expect(html).toContain('never touches a brokerage');
++  });
++
++  it('renders bounded navigation and lifecycle separation copy', () => {
++    const html = renderToStaticMarkup(<ProductTour state={createProductTourState('in_progress', 7, new Date('2026-08-15T12:00:00Z'))} onStep={() => undefined} onPause={() => undefined} onFinish={() => undefined} />);
++    expect(html).toContain('8 / 11');
++    expect(html).toContain('Trade monitoring');
++    expect(html).toContain('they do not appear as Journal entries');
++    expect(html).toContain('Pause');
++    expect(html).toContain('Back');
++    expect(html).toContain('Next');
++  });
++
++  it('replaces Next with Finish on the final Settings step', () => {
++    const html = renderToStaticMarkup(<ProductTour state={createProductTourState('in_progress', 10, new Date('2026-08-15T12:00:00Z'))} onStep={() => undefined} onPause={() => undefined} onFinish={() => undefined} />);
++    expect(html).toContain('You are ready');
++    expect(html).toContain('Finish');
++    expect(html).not.toContain('>Next<');
++  });
++});
+diff --git a/app/src/components/ProductTour.tsx b/app/src/components/ProductTour.tsx
+new file mode 100644
+index 0000000..c8c5a45
+--- /dev/null
++++ b/app/src/components/ProductTour.tsx
+@@ -0,0 +1,120 @@
++import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
++import { ArrowLeft, ArrowRight, Check, Compass, X } from 'lucide-react';
++import { catalystHash, navigate } from '../config/navigation';
++import { productTourSteps, type ProductTourState } from '../features/tour/product-tour';
++
++type TargetBox = { top: number; left: number; width: number; height: number };
++
++function targetBox(element: HTMLElement): TargetBox {
++  const rect = element.getBoundingClientRect();
++  const padding = 7;
++  return {
++    top: Math.max(6, rect.top - padding),
++    left: Math.max(6, rect.left - padding),
++    width: Math.min(window.innerWidth - 12, rect.width + padding * 2),
++    height: Math.min(window.innerHeight - 12, rect.height + padding * 2),
++  };
++}
++
++export function ProductTourInvitation({ busy, onTake, onSkip }: { busy?: boolean; onTake: () => void | Promise<void>; onSkip: () => void | Promise<void> }) {
++  const dialog = useRef<HTMLElement>(null);
++  useEffect(() => {
++    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
++    const timer = window.setTimeout(() => dialog.current?.querySelector<HTMLElement>('.primary')?.focus(), 0);
++    const keydown = (event: KeyboardEvent) => {
++      if (event.key === 'Escape' && !busy) { event.preventDefault(); void onSkip(); return; }
++      if (event.key !== 'Tab') return;
++      const items = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])') || []);
++      if (!items.length) return;
++      const first = items[0]; const last = items[items.length - 1];
++      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
++      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
++    };
++    document.addEventListener('keydown', keydown);
++    return () => { window.clearTimeout(timer); document.removeEventListener('keydown', keydown); previous?.focus(); };
++  }, [busy, onSkip]);
++  return <div className="tour-invitation-backdrop" role="presentation">
++    <section className="tour-invitation" role="dialog" aria-modal="true" aria-labelledby="tour-invitation-title" aria-describedby="tour-invitation-description" ref={dialog}>
++      <span className="tour-invitation-icon" aria-hidden="true"><Compass /></span>
++      <span className="eyebrow">A quick orientation</span>
++      <h2 id="tour-invitation-title">See how OJ fits together</h2>
++      <p id="tour-invitation-description">Take a short, read-only tour of the catalyst-first workflow. It creates no research, consumes no provider credits, and never touches a brokerage.</p>
++      <footer><button disabled={busy} onClick={() => void onSkip()}>Skip for Now</button><button className="primary" disabled={busy} onClick={() => void onTake()}>{busy ? 'Saving' : 'Take a Tour'} <ArrowRight size={16} /></button></footer>
++    </section>
++  </div>;
++}
++
++export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
++  state: ProductTourState;
++  catalystId?: string;
++  onStep: (step: number) => void | Promise<void>;
++  onPause: () => void | Promise<void>;
++  onFinish: () => void | Promise<void>;
++}) {
++  const step = productTourSteps[state.step] || productTourSteps[0];
++  const card = useRef<HTMLElement>(null);
++  const [box, setBox] = useState<TargetBox>();
++  const [missing, setMissing] = useState(false);
++  const [busy, setBusy] = useState(false);
++  const [message, setMessage] = useState('');
++
++  const go = useCallback(async (action: () => void | Promise<void>) => {
++    setBusy(true); setMessage('');
++    try { await action(); }
++    catch (error) { setMessage(error instanceof Error ? error.message : 'Tour progress could not be saved.'); }
++    finally { setBusy(false); }
++  }, []);
++
++  useLayoutEffect(() => {
++    if (step.id === 'war-room' && catalystId) window.location.hash = catalystHash(catalystId).replace(/^#/, '');
++    else navigate(step.route);
++    setBox(undefined); setMissing(false);
++    let attempt = 0; let timer = 0; let target: HTMLElement | null = null;
++    const measure = () => {
++      target = document.querySelector<HTMLElement>(`[data-tour-id="${step.target}"]`);
++      if (!target && attempt < 12) { attempt += 1; timer = window.setTimeout(measure, 80); return; }
++      if (!target) { setMissing(true); setBox(undefined); return; }
++      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
++      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
++      timer = window.setTimeout(() => setBox(target ? targetBox(target) : undefined), reduced ? 0 : 240);
++    };
++    timer = window.setTimeout(measure, 20);
++    const refresh = () => { if (target) setBox(targetBox(target)); };
++    window.addEventListener('resize', refresh); window.addEventListener('scroll', refresh, true);
++    return () => { window.clearTimeout(timer); window.removeEventListener('resize', refresh); window.removeEventListener('scroll', refresh, true); };
++  }, [catalystId, step.id, step.route, step.target]);
++
++  useEffect(() => {
++    const timer = window.setTimeout(() => card.current?.focus(), 0);
++    const keydown = (event: KeyboardEvent) => {
++      if (event.key === 'Escape') { event.preventDefault(); void go(onPause); }
++      if (event.key === 'ArrowLeft' && state.step > 0) { event.preventDefault(); void go(() => onStep(state.step - 1)); }
++      if (event.key === 'ArrowRight' && state.step < productTourSteps.length - 1) { event.preventDefault(); void go(() => onStep(state.step + 1)); }
++    };
++    document.addEventListener('keydown', keydown);
++    return () => { window.clearTimeout(timer); document.removeEventListener('keydown', keydown); };
++  }, [go, onPause, onStep, state.step]);
++
++  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth; const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight;
++  const cardWidth = Math.min(380, Math.max(280, viewportWidth - 32));
++  const left = box ? Math.max(16, Math.min(viewportWidth - cardWidth - 16, box.left + box.width / 2 - cardWidth / 2)) : (viewportWidth - cardWidth) / 2;
++  const placeBelow = Boolean(box && box.top + box.height < viewportHeight * .58);
++  const top = box ? (placeBelow ? Math.min(viewportHeight - 300, box.top + box.height + 14) : Math.max(16, box.top - 292)) : Math.max(16, (viewportHeight - 280) / 2);
++  const style = { '--tour-card-left': `${left}px`, '--tour-card-top': `${top}px`, '--tour-card-width': `${cardWidth}px` } as CSSProperties;
++  const highlight = box ? { top: box.top, left: box.left, width: box.width, height: box.height } : undefined;
++  const finalStep = state.step === productTourSteps.length - 1;
++
++  return <div className="product-tour-layer" data-missing-target={missing ? 'true' : undefined} style={style}>
++    <div className="product-tour-wash" aria-hidden="true" />
++    {highlight && <div className="product-tour-highlight" aria-hidden="true" style={highlight} />}
++    <section className="product-tour-card" role="dialog" aria-modal="false" aria-labelledby="product-tour-title" aria-describedby="product-tour-description" tabIndex={-1} ref={card}>
++      <header><div><span className="eyebrow">{step.eyebrow}</span><span className="tour-progress">{state.step + 1} / {productTourSteps.length}</span></div><button className="icon-button" aria-label="Pause product tour" disabled={busy} onClick={() => void go(onPause)}><X size={18} /></button></header>
++      <div className="tour-progress-track" aria-hidden="true"><span style={{ width: `${((state.step + 1) / productTourSteps.length) * 100}%` }} /></div>
++      <h2 id="product-tour-title">{step.title}</h2>
++      <p id="product-tour-description">{step.body}</p>
++      {missing && <small className="tour-fallback-note">This account does not have an example for this step yet, so OJ is showing the explanation without an anchor.</small>}
++      {message && <small className="tour-error" role="alert">{message}</small>}
++      <footer><button disabled={busy || state.step === 0} onClick={() => void go(() => onStep(state.step - 1))}><ArrowLeft size={15} />Back</button><button className="text-button" disabled={busy} onClick={() => void go(onPause)}>Pause</button>{finalStep ? <button className="primary" disabled={busy} onClick={() => void go(onFinish)}><Check size={16} />Finish</button> : <button className="primary" disabled={busy} onClick={() => void go(() => onStep(state.step + 1))}>Next<ArrowRight size={15} /></button>}</footer>
++    </section>
++  </div>;
++}
+diff --git a/app/src/features/tour/product-tour-boundary.test.ts b/app/src/features/tour/product-tour-boundary.test.ts
+new file mode 100644
+index 0000000..e6cf6db
+--- /dev/null
++++ b/app/src/features/tour/product-tour-boundary.test.ts
+@@ -0,0 +1,20 @@
++import { readFileSync } from 'node:fs';
++import { describe, expect, it } from 'vitest';
++
++describe('product tour implementation boundary', () => {
++  it('contains no domain action, provider, brokerage, or Supabase client dependency', () => {
++    const component = readFileSync(new URL('../../components/ProductTour.tsx', import.meta.url), 'utf8');
++    const model = readFileSync(new URL('./product-tour.ts', import.meta.url), 'utf8');
++    for (const forbidden of ['data/actions', 'collaboration-actions', 'catalyst-intelligence/providers', 'lib/supabase', 'saveResearchSnapshot', 'recordTrade']) {
++      expect(`${component}\n${model}`).not.toContain(forbidden);
++    }
++  });
++
++  it('defines mobile, safe-area, viewport, and reduced-motion protections', () => {
++    const css = readFileSync(new URL('../../styles/product-tour.css', import.meta.url), 'utf8');
++    expect(css).toContain('@media(max-width:700px)');
++    expect(css).toContain('env(safe-area-inset-bottom)');
++    expect(css).toContain('max-height:calc(100dvh - 32px)');
++    expect(css).toContain('@media(prefers-reduced-motion:reduce)');
++  });
++});
+diff --git a/app/src/features/tour/product-tour.test.ts b/app/src/features/tour/product-tour.test.ts
+new file mode 100644
+index 0000000..fd0c588
+--- /dev/null
++++ b/app/src/features/tour/product-tour.test.ts
+@@ -0,0 +1,47 @@
++import { describe, expect, it } from 'vitest';
++import { PRODUCT_TOUR_VERSION, createProductTourState, productTourActionLabel, productTourPreferenceData, productTourSteps, readProductTourState } from './product-tour';
++
++describe('product tour state', () => {
++  it('starts a new version without treating older completion as current', () => {
++    expect(readProductTourState(undefined)).toMatchObject({ version: PRODUCT_TOUR_VERSION, status: 'not_started', step: 0 });
++    expect(readProductTourState({ productTour: { version: 0, status: 'completed', step: 10 } }).status).toBe('not_started');
++  });
++
++  it('clamps resumable progress and preserves unrelated preference JSON', () => {
++    const progress = readProductTourState({ productTour: { version: PRODUCT_TOUR_VERSION, status: 'in_progress', step: 999 } });
++    expect(progress.step).toBe(productTourSteps.length - 1);
++    expect(productTourActionLabel(progress)).toBe('Resume Product Tour');
++    expect(productTourPreferenceData({ mobileNavigation: ['/'] }, progress)).toEqual({ mobileNavigation: ['/'], productTour: progress });
++  });
++
++  it('creates deterministic skipped and completed states', () => {
++    const now = new Date('2026-08-15T12:00:00Z');
++    expect(createProductTourState('skipped', 2, now)).toEqual({ version: PRODUCT_TOUR_VERSION, status: 'skipped', step: 2, updatedAt: now.toISOString() });
++    expect(createProductTourState('completed', 20, now).step).toBe(productTourSteps.length - 1);
++  });
++
++  it('uses stable semantic targets and programmatic routes for every step', () => {
++    expect(productTourSteps).toHaveLength(11);
++    expect(new Set(productTourSteps.map((step) => step.id)).size).toBe(productTourSteps.length);
++    expect(productTourSteps.every((step) => step.target && step.route.startsWith('/'))).toBe(true);
++    expect(productTourSteps.find((step) => step.id === 'record-trade')?.body).toContain('outside OJ');
++    expect(productTourSteps.find((step) => step.id === 'monitoring')?.body).toContain('do not appear as Journal entries');
++  });
++
++  it('does not depend on any customizable mobile shortcut set', () => {
++    const mobileSets = [
++      ['/', '/catalysts', '/ideas', '/trades'],
++      ['/', '/journal', '/insights', '/trades'],
++      ['/catalysts', '/ideas', '/journal', '/insights'],
++    ];
++    const routes = productTourSteps.map((step) => step.route);
++    for (const shortcuts of mobileSets) {
++      expect(routes).toContain('/catalysts');
++      expect(routes).toContain('/ideas');
++      expect(routes).toContain('/trades');
++      expect(routes).toContain('/journal');
++      expect(routes).toContain('/insights');
++      expect(shortcuts).toHaveLength(4);
++    }
++  });
++});
+diff --git a/app/src/features/tour/product-tour.ts b/app/src/features/tour/product-tour.ts
+new file mode 100644
+index 0000000..b073518
+--- /dev/null
++++ b/app/src/features/tour/product-tour.ts
+@@ -0,0 +1,105 @@
++import type { AppPath } from '../../config/navigation';
++
++export const PRODUCT_TOUR_VERSION = 1;
++
++export type ProductTourStatus = 'not_started' | 'in_progress' | 'skipped' | 'completed';
++
++export type ProductTourState = {
++  version: number;
++  status: ProductTourStatus;
++  step: number;
++  updatedAt?: string;
++};
++
++export type ProductTourStep = {
++  id: string;
++  route: AppPath;
++  target: string;
++  eyebrow: string;
++  title: string;
++  body: string;
++};
++
++export const productTourSteps: ProductTourStep[] = [
++  {
++    id: 'welcome', route: '/', target: 'overview-shell', eyebrow: 'Welcome to OJ', title: 'A deliberate research workflow',
++    body: 'OJ moves from scheduled facts to a private Idea, a planned Candidate, an actual Trade, monitoring, and reflection. The app never connects to or trades through a brokerage.',
++  },
++  {
++    id: 'risk', route: '/', target: 'overview-risk', eyebrow: 'Overview', title: 'Know the risk you chose',
++    body: 'This summary applies your OJ risk policy to confirmed open Trades. Remaining capacity is a research guardrail—not cash, margin, or brokerage buying power.',
++  },
++  {
++    id: 'catalysts', route: '/catalysts', target: 'catalyst-calendar', eyebrow: 'Catalysts', title: 'Start with scheduled facts',
++    body: 'Use the calendar to see upcoming events before choosing a ticker. Dates, sources, sensitivity, and affected securities belong to the shared factual layer.',
++  },
++  {
++    id: 'war-room', route: '/catalysts', target: 'catalyst-war-room', eyebrow: 'Catalyst War Room', title: 'Organize research without forcing a Trade',
++    body: 'A War Room brings together factual evidence, missions, forecasts, and Catalyst Intelligence. This tour does not fetch provider data, consume API credits, or create records.',
++  },
++  {
++    id: 'ideas', route: '/ideas', target: 'ideas-shell', eyebrow: 'Ideas', title: 'Keep conclusions private',
++    body: 'Ideas hold your thesis, conditions, invalidation, and planned exit. Workspace members may share facts while each person keeps conclusions, sizing, and Trade decisions private.',
++  },
++  {
++    id: 'candidates', route: '/ideas', target: 'idea-candidates', eyebrow: 'Candidate', title: 'Plan a defined-risk structure',
++    body: 'A Candidate is a possible spread, not an order and not a fill. Compare its planned debit, strikes, and maximum loss before deciding whether to trade elsewhere.',
++  },
++  {
++    id: 'record-trade', route: '/trades', target: 'record-trade-action', eyebrow: 'Record Trade', title: 'Separate planning from execution',
++    body: 'After a real fill occurs outside OJ, record the actual execution manually. OJ preserves planned-versus-actual values but never previews, routes, or submits an order.',
++  },
++  {
++    id: 'monitoring', route: '/trades', target: 'trade-monitoring', eyebrow: 'Trade monitoring', title: 'Keep Check-Ins with the Trade',
++    body: 'Check-Ins capture changes in thesis health and management view. They remain in the Trade history and inform a later debrief; they do not appear as Journal entries.',
++  },
++  {
++    id: 'journal', route: '/journal', target: 'journal-debriefs', eyebrow: 'Journal', title: 'Reflect without rewriting history',
++    body: 'Journal is for Trade debriefs and personal lessons. Original entry context, Check-Ins, and outcome facts stay linked so reflection does not overwrite the historical record.',
++  },
++  {
++    id: 'insights', route: '/insights', target: 'insights-shell', eyebrow: 'Insights', title: 'Look for patterns carefully',
++    body: 'Insights summarizes confirmed history, completed reviews, and calibrated forecasts. Small samples stay labeled so a few outcomes are not mistaken for a durable edge.',
++  },
++  {
++    id: 'finish', route: '/settings', target: 'tour-guidance', eyebrow: 'You are ready', title: 'Return whenever you need a refresher',
++    body: 'The full workflow is now yours to explore. Replay or resume this tour from Guidance in Settings at any time.',
++  },
++];
++
++const defaultState = (): ProductTourState => ({ version: PRODUCT_TOUR_VERSION, status: 'not_started', step: 0 });
++
++export function readProductTourState(data: unknown): ProductTourState {
++  if (!data || typeof data !== 'object' || Array.isArray(data)) return defaultState();
++  const raw = (data as Record<string, unknown>).productTour;
++  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaultState();
++  const value = raw as Record<string, unknown>;
++  if (value.version !== PRODUCT_TOUR_VERSION) return defaultState();
++  const status = typeof value.status === 'string' && ['not_started','in_progress','skipped','completed'].includes(value.status)
++    ? value.status as ProductTourStatus
++    : 'not_started';
++  const rawStep = typeof value.step === 'number' && Number.isFinite(value.step) ? Math.floor(value.step) : 0;
++  return {
++    version: PRODUCT_TOUR_VERSION,
++    status,
++    step: Math.max(0, Math.min(productTourSteps.length - 1, rawStep)),
++    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : undefined,
++  };
++}
++
++export function createProductTourState(status: ProductTourStatus, step = 0, now = new Date()): ProductTourState {
++  return {
++    version: PRODUCT_TOUR_VERSION,
++    status,
++    step: Math.max(0, Math.min(productTourSteps.length - 1, Math.floor(step))),
++    updatedAt: now.toISOString(),
++  };
++}
++
++export function productTourPreferenceData(data: Record<string, unknown> | undefined, state: ProductTourState) {
++  return { ...(data || {}), productTour: state };
++}
++
++export function productTourActionLabel(state: ProductTourState) {
++  return state.status === 'in_progress' ? 'Resume Product Tour' : 'Take Product Tour';
++}
+diff --git a/app/src/main.tsx b/app/src/main.tsx
+index 155e5ef..1cb3d7c 100644
+--- a/app/src/main.tsx
++++ b/app/src/main.tsx
+@@ -7,6 +7,7 @@ import './styles/idea-lifecycle.css';
+ import './styles/collaboration.css';
+ import './styles/visual-polish.css';
+ import './styles/intelligence.css';
++import './styles/product-tour.css';
+ 
+ createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+ if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`));
+diff --git a/app/src/pages/SettingsPage.test.tsx b/app/src/pages/SettingsPage.test.tsx
+index 0539cfc..f9fe961 100644
+--- a/app/src/pages/SettingsPage.test.tsx
++++ b/app/src/pages/SettingsPage.test.tsx
+@@ -13,4 +13,12 @@ describe('settings mobile navigation preferences', () => {
+     expect(markup).toContain('aria-label="Mobile navigation preview"');
+     expect(markup).toContain('4 + More');
+   });
++
++  it('offers versioned tour guidance and replay without using a primary navigation slot', () => {
++    const markup = renderToStaticMarkup(<SettingsPage workspace={demoWorkspace} onSaved={() => undefined} />);
++    expect(markup).toContain('data-tour-id="tour-guidance"');
++    expect(markup).toContain('Guidance');
++    expect(markup).toContain('Take Product Tour');
++    expect(markup).toContain('fetching provider data');
++  });
+ });
+diff --git a/app/src/pages/SettingsPage.tsx b/app/src/pages/SettingsPage.tsx
+index 2655469..6786715 100644
+--- a/app/src/pages/SettingsPage.tsx
++++ b/app/src/pages/SettingsPage.tsx
+@@ -1,5 +1,5 @@
+ import { useEffect, useState } from 'react';
+-import { Download, KeyRound, LogOut, MailPlus, Save, UserMinus, Users } from 'lucide-react';
++import { Compass, Download, KeyRound, LogOut, MailPlus, Save, UserMinus, Users } from 'lucide-react';
+ import { saveAccountPolicy } from '../data/actions';
+ import { savePreferences } from '../data/workspace';
+ import { downloadJournal } from '../features/export/markdown';
+@@ -11,8 +11,9 @@ import { acceptWorkspaceInvite, leaveResearchWorkspace, removeWorkspaceMember, r
+ import { MemberBadge } from '../components/MemberBadge';
+ import { primaryNavigation, replaceMobileNavigationShortcut, type PrimaryPath } from '../config/navigation';
+ import type { AppPreferences } from '../types/domain';
++import { productTourActionLabel, readProductTourState, type ProductTourState } from '../features/tour/product-tour';
+ 
+-export function SettingsPage({ workspace, onSaved }: { workspace: Workspace; onSaved: () => void }) {
++export function SettingsPage({ workspace, onSaved, tourState, onStartTour }: { workspace: Workspace; onSaved: () => void; tourState?: ProductTourState; onStartTour?: (step: number) => void }) {
+   const [message, setMessage] = useState('');
+   const [account, setAccount] = useState({ displayName: workspace.profile?.displayName || '', initials: workspace.profile?.initials || '' });
+   const [password, setPassword] = useState({ current: '', next: '', confirmation: '' }); const [inviteEmail, setInviteEmail] = useState(''); const [busy, setBusy] = useState('');
+@@ -23,7 +24,7 @@ export function SettingsPage({ workspace, onSaved }: { workspace: Workspace; onS
+   useEffect(() => { if (workspace.profile) setAccount({ displayName: workspace.profile.displayName, initials: workspace.profile.initials }); }, [workspace.profile]);
+   useEffect(() => { setWorkspaceName(workspace.researchWorkspace?.name || ''); }, [workspace.researchWorkspace?.name]);
+   const savePolicy = async () => { try { const total = Number(policy.total); const maximum = Number(policy.maximum); if (!(total > 0) || !(maximum > 0) || maximum > total) throw new Error('Enter a valid total and maximum open risk.'); await saveAccountPolicy({ totalCapital: total, maximumOpenRisk: maximum, fixedPerTradeLimit: policy.fixed ? Number(policy.fixed) : undefined, strategies: policy.strategies.split(',').map((item) => item.trim()).filter(Boolean), effectiveDate: policy.effectiveDate, version: (workspace.policy?.version || 0) + 1 }, Boolean(workspace.policy)); setMessage('Risk policy saved.'); onSaved(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Policy save failed.'); } };
+-  const savePrefs = async () => { try { if (preferences.mobileNavigation.length !== 4) throw new Error('Choose exactly four mobile navigation shortcuts.'); await savePreferences(preferences, workspace.preferences?.revision); setMessage('Preferences saved.'); onSaved(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Preference save failed.'); } };
++  const savePrefs = async () => { try { if (preferences.mobileNavigation.length !== 4) throw new Error('Choose exactly four mobile navigation shortcuts.'); const latestTour = workspace.preferences?.data?.productTour; await savePreferences({ ...preferences, data: { ...preferences.data, ...(latestTour ? { productTour: latestTour } : {}) } }, workspace.preferences?.revision); setMessage('Preferences saved.'); onSaved(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Preference save failed.'); } };
+   const setMobileShortcut = (index: number, path: PrimaryPath) => setPreferences((current) => ({ ...current, mobileNavigation: replaceMobileNavigationShortcut(current.mobileNavigation, index, path) }));
+   const saveAccount = async () => { setBusy('account'); try { await updateAccountProfile(account.displayName, account.initials); setMessage('Account profile saved.'); onSaved(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Profile save failed.'); } finally { setBusy(''); } };
+   const changePassword = async () => { setBusy('password'); try { await setAccountPassword(password.next, password.confirmation, password.current); setPassword({ current: '', next: '', confirmation: '' }); setMessage('Password updated.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Password update failed.'); } finally { setBusy(''); } };
+@@ -34,6 +35,7 @@ export function SettingsPage({ workspace, onSaved }: { workspace: Workspace; onS
+   const acceptInvite = async (inviteId: string) => { setBusy(inviteId); try { await acceptWorkspaceInvite(inviteId); setMessage('Workspace invitation accepted.'); onSaved(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Invitation could not be accepted.'); } finally { setBusy(''); } };
+   const removeMember = async (userId: string, name: string) => { if (!workspace.researchWorkspace || !window.confirm(`Remove ${name} from this research workspace? Their private OJ records are unaffected.`)) return; setBusy(userId); try { await removeWorkspaceMember(workspace.researchWorkspace.id, userId); setMessage(`${name} removed from the workspace.`); onSaved(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Member could not be removed.'); } finally { setBusy(''); } };
+   const leaveWorkspace = async () => { if (!workspace.researchWorkspace || !window.confirm('Leave this research workspace? Your private OJ records remain yours.')) return; setBusy('leave'); try { await leaveResearchWorkspace(workspace.researchWorkspace.id); setMessage('You left the workspace.'); onSaved(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Workspace could not be left.'); } finally { setBusy(''); } };
++  const currentTour = tourState || readProductTourState(workspace.preferences?.data);
+   return <div className="page"><PageHeader title="Settings" subtitle="Account, risk, and export controls." />
+     {message && <p className="page-message" role="status" aria-live="polite">{message}</p>}<div className="settings-grid">
+       {workspace.profile && <section className="card inline-form settings-account"><header><h2>Account</h2><p>Manage your sign-in and profile.</p></header><div className="account-summary"><span className="account-initials" aria-hidden="true">{workspace.profile.initials}</span><div><b>{workspace.profile.displayName}</b><span>{workspace.profile.email}</span><span>{workspace.profile.role === 'owner' ? 'Owner' : 'Member'}</span></div></div><div className="form-grid"><label><span>Display Name</span><input autoComplete="name" value={account.displayName} onChange={(event) => setAccount({ ...account, displayName: event.target.value })} /></label><label><span>Initials</span><input autoCapitalize="characters" maxLength={4} value={account.initials} onChange={(event) => setAccount({ ...account, initials: event.target.value.toUpperCase() })} /></label></div><footer><button className="primary" onClick={() => void saveAccount()} disabled={busy === 'account'}><Save size={16} />{busy === 'account' ? 'Saving' : 'Save Account'}</button></footer></section>}
+@@ -42,6 +44,7 @@ export function SettingsPage({ workspace, onSaved }: { workspace: Workspace; onS
+       {workspace.researchWorkspace && <section className="card inline-form workspace-access"><header><h2>Workspace Access</h2><p>Manage shared research separately from OJ account roles.</p></header>{workspaceOwner && <div className="form-grid single"><label><span>Workspace name</span><input value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></label><button className="secondary-save" disabled={!workspaceName.trim() || busy === 'workspace'} onClick={() => void saveWorkspaceName()}><Save size={15} />Save Name</button></div>}<div className="member-list">{workspace.workspaceMembers.map((member) => <div key={member.userId}><MemberBadge initials={member.initials} name={member.displayName} /><span>{member.workspaceRole === 'owner' ? 'Workspace owner' : 'Workspace member'}</span>{workspaceOwner && member.workspaceRole !== 'owner' && <button className="icon-button" aria-label={`Remove ${member.displayName}`} disabled={busy === member.userId} onClick={() => void removeMember(member.userId, member.displayName)}><UserMinus size={16} /></button>}</div>)}</div>{workspaceOwner && <div className="form-grid single workspace-invite-form"><label><span>Invite by email</span><input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" autoComplete="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label><button className="primary" onClick={() => void sendInvite()} disabled={busy === 'invite' || !inviteEmail.includes('@')}><MailPlus size={16} />{busy === 'invite' ? 'Sending' : 'Send Workspace Invite'}</button></div>}{!workspaceOwner && <footer><button className="subtle-danger" disabled={busy === 'leave'} onClick={() => void leaveWorkspace()}><Users size={16} />{busy === 'leave' ? 'Leaving' : 'Leave Workspace'}</button></footer>}</section>}
+       <section className="card inline-form"><header><h2>Risk Policy</h2><p>Set an OJ research rule deliberately. This is not brokerage buying power, cash, margin, or an automatic sizing target.</p></header><div className="form-grid"><label><span>Total account capital</span><input inputMode="decimal" value={policy.total} onChange={(event) => setPolicy({ ...policy, total: event.target.value })} /></label><label><span>Open-options max-loss ceiling</span><input inputMode="decimal" value={policy.maximum} onChange={(event) => setPolicy({ ...policy, maximum: event.target.value })} /></label><label><span>Fixed per-trade limit</span><input inputMode="decimal" placeholder="Optional" value={policy.fixed} onChange={(event) => setPolicy({ ...policy, fixed: event.target.value })} /></label><label><span>Effective date</span><input type="date" value={policy.effectiveDate} onChange={(event) => setPolicy({ ...policy, effectiveDate: event.target.value })} /></label><label className="wide"><span>Defined-risk strategies</span><input value={policy.strategies} onChange={(event) => setPolicy({ ...policy, strategies: event.target.value })} /></label></div><footer><button className="primary" onClick={() => void savePolicy()} disabled={!workspace.approved}><Save size={16} />Save Policy</button></footer></section>
+       <section className="card inline-form"><header><h2>Preferences</h2><p>Control display defaults across devices.</p></header><div className="form-grid single"><label><span>Theme</span><select value={preferences.theme} onChange={(event) => setPreferences({ ...preferences, theme: event.target.value as typeof preferences.theme })}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><label><span>Calendar view</span><select value={preferences.calendarView} onChange={(event) => setPreferences({ ...preferences, calendarView: event.target.value as typeof preferences.calendarView })}><option value="month">Month</option><option value="week">Week</option><option value="day">Day</option></select></label><label className="confirm-row"><input type="checkbox" checked={preferences.compactCards} onChange={(event) => setPreferences({ ...preferences, compactCards: event.target.checked })} /><span>Use compact summary cards</span></label><div className="mobile-nav-preference"><header><div><b>Mobile navigation</b><span>Choose and order four shortcuts. Everything else stays available in More.</span></div><strong>4 + More</strong></header><div className="mobile-nav-slots">{preferences.mobileNavigation.map((path, index) => <label key={index}><span>Shortcut {index + 1}</span><select value={path} onChange={(event) => setMobileShortcut(index, event.target.value as PrimaryPath)}>{primaryNavigation.map((item) => <option key={item.path} value={item.path}>{item.label}</option>)}</select></label>)}</div><div className="mobile-nav-preview" aria-label="Mobile navigation preview">{preferences.mobileNavigation.map((path) => { const item = primaryNavigation.find((candidate) => candidate.path === path)!; const Icon = item.icon; return <span key={item.path}><Icon size={16} />{item.label}</span>; })}<span><span className="preview-menu-icon" aria-hidden="true">☰</span>More</span></div></div></div><footer><button className="primary" onClick={() => void savePrefs()} disabled={!workspace.approved || preferences.mobileNavigation.length !== 4}><Save size={16} />Save Preferences</button></footer></section>
++      <section className="card export-card" data-tour-id="tour-guidance"><h2>Guidance</h2><p>Review OJ’s catalyst-first workflow without creating research, fetching provider data, or changing a Trade.</p><span className="tour-guidance-status" data-status={currentTour.status}>{currentTour.status.replace('_', ' ')}</span><button onClick={() => onStartTour?.(currentTour.status === 'in_progress' ? currentTour.step : 0)}><Compass size={16} />{productTourActionLabel(currentTour)}</button></section>
+       <section className="card export-card"><h2>Markdown Export</h2><p>Download an optional Obsidian-friendly mirror. OJ continues to use Supabase as its canonical store.</p><button onClick={() => downloadJournal(workspace)}><Download size={16} />Export Journal</button></section><section className="card export-card"><h2>Privacy</h2><p>OJ stores private records behind owner-scoped RLS. The public site contains code and synthetic examples only. Brokerage credentials are never used.</p></section></div>
+   </div>;
+ }
+diff --git a/app/src/styles/product-tour.css b/app/src/styles/product-tour.css
+new file mode 100644
+index 0000000..3cb16fa
+--- /dev/null
++++ b/app/src/styles/product-tour.css
+@@ -0,0 +1,9 @@
++.tour-invitation-backdrop,.product-tour-layer{position:fixed;z-index:240;inset:0}.tour-invitation-backdrop{display:grid;place-items:center;padding:20px;background:rgba(10,8,5,.62);backdrop-filter:blur(12px)}
++.tour-invitation{width:min(480px,100%);padding:30px;border:1px solid color-mix(in srgb,var(--orange) 26%,var(--line));border-radius:24px;background:var(--surface);box-shadow:0 30px 90px rgba(0,0,0,.42);text-align:center}.tour-invitation-icon{width:54px;height:54px;margin:0 auto 18px;display:grid;place-items:center;border-radius:17px;background:var(--orange-soft);color:var(--orange)}.tour-invitation h2{margin:8px 0;font-size:30px;letter-spacing:-.04em}.tour-invitation p{margin:0 auto;color:var(--muted);line-height:1.6}.tour-invitation footer{display:flex;justify-content:center;gap:9px;margin-top:24px}.tour-invitation footer button,.product-tour-card footer button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
++.product-tour-layer{pointer-events:none}.product-tour-wash{position:absolute;inset:0;background:rgba(8,7,5,.42);backdrop-filter:saturate(.8)}.product-tour-highlight{position:fixed;border:2px solid var(--orange);border-radius:16px;box-shadow:0 0 0 9999px rgba(8,7,5,.18),0 0 0 5px color-mix(in srgb,var(--orange) 18%,transparent),0 18px 60px rgba(0,0,0,.22);transition:top .26s ease,left .26s ease,width .26s ease,height .26s ease}
++.product-tour-card{position:fixed;z-index:2;left:var(--tour-card-left);top:var(--tour-card-top);width:var(--tour-card-width);max-height:calc(100dvh - 32px);overflow:auto;padding:20px;border:1px solid color-mix(in srgb,var(--orange) 24%,var(--line));border-radius:20px;background:color-mix(in srgb,var(--surface) 96%,transparent);box-shadow:0 24px 72px rgba(0,0,0,.36);backdrop-filter:blur(22px) saturate(135%);pointer-events:auto;outline:none;animation:tour-card-in .24s cubic-bezier(.2,.8,.2,1) both}.product-tour-card:focus-visible{box-shadow:0 0 0 3px var(--orange-soft),0 24px 72px rgba(0,0,0,.36)}.product-tour-card>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.product-tour-card>header>div{display:flex;align-items:center;gap:9px}.tour-progress{color:var(--muted);font:500 10px DM Mono,monospace}.tour-progress-track{height:3px;margin:12px 0 17px;overflow:hidden;border-radius:99px;background:var(--surface-2)}.tour-progress-track span{display:block;height:100%;border-radius:inherit;background:var(--orange);transition:width .25s ease}.product-tour-card h2{margin:0 0 8px;font-size:23px;letter-spacing:-.035em}.product-tour-card>p{margin:0;color:var(--muted);font-size:12px;line-height:1.65}.product-tour-card>small{display:block;margin-top:12px;padding:9px 10px;border-radius:9px;background:var(--surface-2);color:var(--muted);font-size:10px;line-height:1.5}.product-tour-card .tour-error{background:var(--red-soft);color:var(--red)}.product-tour-card footer{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;margin-top:20px;padding-top:15px;border-top:1px solid var(--line)}.product-tour-card footer .text-button{justify-self:center}
++.tour-guidance-status{display:inline-flex;align-items:center;gap:6px;margin:4px 0 16px;padding:6px 9px;border-radius:99px;background:var(--surface-2);color:var(--muted);font-size:10px;text-transform:capitalize}.tour-guidance-status[data-status="completed"]{background:var(--green-soft);color:var(--green)}.tour-guidance-status[data-status="in_progress"]{background:var(--orange-soft);color:var(--orange)}
++@keyframes tour-card-in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
++@media(max-width:700px){.tour-invitation-backdrop{align-items:end;padding:12px 12px calc(12px + env(safe-area-inset-bottom))}.tour-invitation{padding:25px 20px;border-radius:22px}.tour-invitation h2{font-size:26px}.tour-invitation footer{display:grid;grid-template-columns:1fr 1fr}.product-tour-wash{background:rgba(8,7,5,.32)}.product-tour-highlight{border-radius:12px}.product-tour-card{left:10px;right:10px;top:auto;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;max-height:min(58dvh,520px);padding:18px;border-radius:20px}.product-tour-card h2{font-size:21px}.product-tour-card footer{grid-template-columns:auto 1fr auto}.product-tour-card footer button{min-width:0;padding:8px 10px}.product-tour-card footer .text-button{font-size:10px}}
++@media(max-width:360px){.tour-invitation footer{grid-template-columns:1fr}.product-tour-card{left:6px;right:6px;bottom:calc(6px + env(safe-area-inset-bottom));padding:15px}.product-tour-card>p{font-size:11px}.product-tour-card footer{gap:4px}.product-tour-card footer button{font-size:9px}}
++@media(prefers-reduced-motion:reduce){.product-tour-card{animation:none}.product-tour-highlight,.tour-progress-track span{transition:none}}
+-- 
+2.50.1 (Apple Git-155)
+
