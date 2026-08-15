@@ -41,7 +41,9 @@ The controller navigates directly by route; it never assumes a mobile shortcut p
 
 Desktop uses an anchored popover and highlighted region. Narrow viewports use a bottom sheet so the explanation stays readable above safe-area insets. Target bounds are remeasured on scroll and resize. Reduced-motion preferences disable tour animation and smooth scrolling.
 
-The first-use dialog moves focus into its choices, traps Tab within the modal, restores prior focus, and treats Escape as **Skip for Now**. The active tour is non-modal: its Back, Next, Pause, and Finish controls are keyboard reachable; Left/Right arrows move between steps; Escape pauses; route content remains available. Missing targets are announced in the callout rather than producing an invisible or off-screen control.
+The first-use dialog moves focus into its choices, traps Tab within the modal, restores prior focus, and treats Escape as **Skip for Now**. The active tour is non-modal: its Back, Next, Pause, and Finish controls are keyboard reachable; Left/Right arrows move between steps; Escape pauses; route content remains available. Arrow navigation leaves native caret, selection, and chooser behavior intact when the event begins in an input, textarea, select, contenteditable region, or equivalent text-entry role. Meta, Ctrl, and Alt arrow shortcuts are also left to the browser and operating system.
+
+All Tour actions share a synchronous transition lock. A preference save must settle before another button or document-level keyboard action can begin, including on the first-use Take/Skip choice. The lock releases after both successful and failed saves so the Tour remains usable. Missing targets are announced in the callout rather than producing an invisible or off-screen control.
 
 ## Product boundary
 

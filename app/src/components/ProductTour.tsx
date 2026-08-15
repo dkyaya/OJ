@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, ArrowRight, Check, Compass, X } from 'lucide-react';
 import { catalystHash, navigate } from '../config/navigation';
+import { hasTourArrowModifier, isEditableTourKeyTarget } from '../features/tour/keyboard';
 import { productTourSteps, type ProductTourState } from '../features/tour/product-tour';
 
 type TargetBox = { top: number; left: number; width: number; height: number };
@@ -18,11 +19,20 @@ function targetBox(element: HTMLElement): TargetBox {
 
 export function ProductTourInvitation({ busy, onTake, onSkip }: { busy?: boolean; onTake: () => void | Promise<void>; onSkip: () => void | Promise<void> }) {
   const dialog = useRef<HTMLElement>(null);
+  const transitionLock = useRef(false);
+  const [transitionBusy, setTransitionBusy] = useState(false);
+  const run = useCallback(async (action: () => void | Promise<void>) => {
+    if (transitionLock.current || busy) return;
+    transitionLock.current = true; setTransitionBusy(true);
+    try { await action(); }
+    finally { transitionLock.current = false; setTransitionBusy(false); }
+  }, [busy]);
+  const saving = Boolean(busy || transitionBusy);
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const timer = window.setTimeout(() => dialog.current?.querySelector<HTMLElement>('.primary')?.focus(), 0);
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) { event.preventDefault(); void onSkip(); return; }
+      if (event.key === 'Escape') { event.preventDefault(); void run(onSkip); return; }
       if (event.key !== 'Tab') return;
       const items = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])') || []);
       if (!items.length) return;
@@ -32,14 +42,14 @@ export function ProductTourInvitation({ busy, onTake, onSkip }: { busy?: boolean
     };
     document.addEventListener('keydown', keydown);
     return () => { window.clearTimeout(timer); document.removeEventListener('keydown', keydown); previous?.focus(); };
-  }, [busy, onSkip]);
+  }, [onSkip, run]);
   return <div className="tour-invitation-backdrop" role="presentation">
     <section className="tour-invitation" role="dialog" aria-modal="true" aria-labelledby="tour-invitation-title" aria-describedby="tour-invitation-description" ref={dialog}>
       <span className="tour-invitation-icon" aria-hidden="true"><Compass /></span>
       <span className="eyebrow">A quick orientation</span>
       <h2 id="tour-invitation-title">See how OJ fits together</h2>
       <p id="tour-invitation-description">Take a short, read-only tour of the catalyst-first workflow. It creates no research, consumes no provider credits, and never touches a brokerage.</p>
-      <footer><button disabled={busy} onClick={() => void onSkip()}>Skip for Now</button><button className="primary" disabled={busy} onClick={() => void onTake()}>{busy ? 'Saving' : 'Take a Tour'} <ArrowRight size={16} /></button></footer>
+      <footer><button disabled={saving} onClick={() => void run(onSkip)}>Skip for Now</button><button className="primary" disabled={saving} onClick={() => void run(onTake)}>{saving ? 'Saving' : 'Take a Tour'} <ArrowRight size={16} /></button></footer>
     </section>
   </div>;
 }
@@ -53,16 +63,19 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
 }) {
   const step = productTourSteps[state.step] || productTourSteps[0];
   const card = useRef<HTMLElement>(null);
+  const transitionLock = useRef(false);
   const [box, setBox] = useState<TargetBox>();
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
   const go = useCallback(async (action: () => void | Promise<void>) => {
+    if (transitionLock.current) return;
+    transitionLock.current = true;
     setBusy(true); setMessage('');
     try { await action(); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Tour progress could not be saved.'); }
-    finally { setBusy(false); }
+    finally { transitionLock.current = false; setBusy(false); }
   }, []);
 
   useLayoutEffect(() => {
@@ -87,7 +100,9 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
   useEffect(() => {
     const timer = window.setTimeout(() => card.current?.focus(), 0);
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); void go(onPause); }
+      if (event.key === 'Escape') { event.preventDefault(); void go(onPause); return; }
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (hasTourArrowModifier(event) || isEditableTourKeyTarget(event.target)) return;
       if (event.key === 'ArrowLeft' && state.step > 0) { event.preventDefault(); void go(() => onStep(state.step - 1)); }
       if (event.key === 'ArrowRight' && state.step < productTourSteps.length - 1) { event.preventDefault(); void go(() => onStep(state.step + 1)); }
     };
