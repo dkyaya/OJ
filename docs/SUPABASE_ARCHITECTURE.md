@@ -31,6 +31,10 @@ The Idea editor writes the dedicated `trade_ideas.idea_status` field while retai
 
 Supabase is the application authority. Commit SHA and note path fields are optional provenance for a private Markdown mirror. Ordinary saves update Supabase directly and never trigger a public Pages build.
 
+## Product-tour preferences
+
+Phase 9 reuses `application_preferences.data` for a versioned `productTour` object containing status, step, and update time. Theme, calendar, compact-card, mobile-navigation, and unrelated JSON values remain intact. The existing owner-scoped preference RLS and optimistic `revision` update apply; no new table, policy, function, Edge Function, or migration is required. Tour navigation makes no Catalyst, Idea, Candidate, Trade, Journal, collaboration, research-snapshot, or provider-cache write.
+
 ## Catalyst-first extension
 
 `20260812025054_catalyst_first_research_foundation.sql` extends the existing Catalyst and Idea tables and adds three owner-scoped tables: `trade_idea_catalysts`, `research_sources`, and append-only `research_snapshots`. It does not duplicate the Calendar, War Room, evidence, mission, forecast, candidate, or Trade systems. See `CATALYST_FIRST_RESEARCH.md` and `RESEARCH_METHODS.md` for product semantics and calculation conventions.
