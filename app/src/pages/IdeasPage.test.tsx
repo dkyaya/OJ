@@ -95,6 +95,7 @@ describe('idea archive presentation', () => {
   it('prepopulates the shared four-step editor for an existing Idea', () => {
     const idea = demoWorkspace.ideas[0];
     const html = renderToStaticMarkup(<Workflow open ownerId={demoWorkspace.profile!.id} idea={idea} catalysts={demoWorkspace.catalysts} onClose={() => undefined} />);
+    expect(html).toContain('data-shared-ui="idea-editor"');
     expect(html).toContain(`Edit ${idea.ticker}`);
     expect(html).toContain('Setup');
     expect(html).toContain('Catalyst');

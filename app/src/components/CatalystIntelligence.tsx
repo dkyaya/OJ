@@ -1,14 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Calculator, CloudDownload, Database, Save } from 'lucide-react';
-import { saveResearchSnapshot } from '../data/actions';
-import { loadDelayedOptions, loadProviderStatus } from '../data/catalyst-intelligence';
 import { calibrationStats, dataQuality, ivContext, midpoint, straddleImpliedMove, volatilityImpliedMove } from '../lib/catalyst-intelligence/analytics';
 import { manualOptionsSnapshot, defaultProviderStatuses } from '../lib/catalyst-intelligence/providers';
 import { earlyEntryAssessment, evaluateScenarios } from '../lib/catalyst-intelligence/scenarios';
 import { sessionDefinitions } from '../lib/catalyst-intelligence/timeline';
 import type { MarketSnapshot, ProviderStatus, ScenarioInput, TradingSessionLabel, VerticalStrategy } from '../lib/catalyst-intelligence/types';
 import { spreadMetrics } from '../lib/payoff';
-import type { Catalyst, TradeIdea, Workspace } from '../types/domain';
+import type { Catalyst, SnapshotType, SourceQuality, TradeIdea, Workspace } from '../types/domain';
 import { OptionChainSnapshot } from './OptionChainSnapshot';
 
 const localDateTime = () => {
@@ -27,21 +25,61 @@ const strategyOf = (idea: TradeIdea): VerticalStrategy | undefined => {
   return undefined;
 };
 
-export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage }: { catalyst: Catalyst; workspace: Workspace; onSaved: () => void | Promise<void>; setMessage: (message: string) => void }) {
+export type CatalystIntelligenceSnapshotInput = {
+  catalystId?: string;
+  tradeIdeaId?: string;
+  snapshotType: SnapshotType;
+  ticker?: string;
+  observedAt: string;
+  methodology: string;
+  values: Record<string, unknown>;
+  provider?: string;
+  sourceQuality?: SourceQuality;
+  freshness?: 'current' | 'delayed' | 'historical' | 'manual';
+  fetchedAt?: string;
+  sourceReference?: string;
+  sessionLabel?: TradingSessionLabel;
+  sourceDate?: string;
+  calendarDaysToCatalyst?: number;
+  catalystTimezone?: string;
+  catalystSession?: string;
+};
+
+export type CatalystIntelligenceActions = {
+  saveSnapshot: (input: CatalystIntelligenceSnapshotInput) => Promise<unknown>;
+  loadProviderStatus: () => Promise<ProviderStatus[]>;
+  loadDelayedOptions: (input: { ticker: string; expiration: string; strikeLimit: number }) => Promise<{ snapshots: MarketSnapshot[]; cache?: { hit: boolean; fetchedAt: string } }>;
+};
+
+export type CatalystIntelligencePresentation = {
+  badge?: ReactNode;
+  initialManual?: Partial<{
+    observedAt: string; ticker: string; underlying: string; expiration: string; longStrike: string; shortStrike: string;
+    longBid: string; longAsk: string; shortBid: string; shortAsk: string; longIv: string; shortIv: string; volume: string; openInterest: string;
+    callBid: string; callAsk: string; putBid: string; putAsk: string; atmIv: string; dte: string; source: string; methodology: string; notes: string; sessionLabel: TradingSessionLabel | '';
+  }>;
+  initialOptions?: MarketSnapshot[];
+  initialRiskFreeRate?: string;
+  providerActionsEnabled?: boolean;
+  reviewAction?: { label: string; onReview: (scenarioPrice?: number) => void | Promise<void> };
+};
+
+export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, setMessage, presentation }: { catalyst: Catalyst; workspace: Workspace; actions: CatalystIntelligenceActions; onSaved: () => void | Promise<void>; setMessage: (message: string) => void; presentation?: CatalystIntelligencePresentation }) {
   const relatedIdeas = useMemo(() => workspace.ideas.filter((idea) => idea.catalystId === catalyst.id || workspace.ideaCatalystLinks.some((link) => link.catalystId === catalyst.id && link.tradeIdeaId === idea.id)), [catalyst.id, workspace.ideaCatalystLinks, workspace.ideas]);
   const candidateOptions = useMemo(() => relatedIdeas.flatMap((idea) => idea.candidates.map((candidate) => ({ key: `${idea.id}:${candidate.id}`, idea, candidate, strategy: strategyOf(idea) }))).filter((item) => item.strategy), [relatedIdeas]);
   const [selectedKey, setSelectedKey] = useState(candidateOptions[0]?.key || '');
   const selected = candidateOptions.find((item) => item.key === selectedKey) || candidateOptions[0];
   const [busy, setBusy] = useState(false);
   const [providers, setProviders] = useState<ProviderStatus[]>(defaultProviderStatuses);
-  const [fetched, setFetched] = useState<{ snapshots: MarketSnapshot[]; cache?: { hit: boolean; fetchedAt: string } }>({ snapshots: [] });
+  const [fetched, setFetched] = useState<{ snapshots: MarketSnapshot[]; cache?: { hit: boolean; fetchedAt: string } }>({ snapshots: presentation?.initialOptions || [] });
   const [manual, setManual] = useState({
     observedAt: localDateTime(), ticker: selected?.idea.ticker || catalyst.linkedTickers[0] || '', underlying: '', expiration: '',
     longStrike: selected?.candidate.longStrike === undefined ? '' : String(selected.candidate.longStrike), shortStrike: selected?.candidate.shortStrike === undefined ? '' : String(selected.candidate.shortStrike),
     longBid: '', longAsk: '', shortBid: '', shortAsk: '', longIv: '', shortIv: '', volume: '', openInterest: '',
     callBid: '', callAsk: '', putBid: '', putAsk: '', atmIv: '', dte: '', source: '', methodology: 'Manual market snapshot transcribed from the named source.', notes: '', sessionLabel: '' as TradingSessionLabel | '',
+    ...presentation?.initialManual,
   });
-  const [riskFreeRate, setRiskFreeRate] = useState('');
+  const [riskFreeRate, setRiskFreeRate] = useState(presentation?.initialRiskFreeRate || '');
   const [strikeLimit, setStrikeLimit] = useState('6');
   const scenarioDate = catalyst.date && catalyst.date >= today() ? catalyst.date : today();
   const [scenarios, setScenarios] = useState<ScenarioInput[]>([
@@ -88,16 +126,16 @@ export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage 
     const shortLeg = number(manual.shortStrike) === undefined ? undefined : manualOptionsSnapshot({ ...common, optionSide: side, strike: number(manual.shortStrike), bid: number(manual.shortBid), ask: number(manual.shortAsk), impliedVolatility: percent(manual.shortIv) });
     const eventDate = catalyst.date ? new Date(`${catalyst.date}T12:00:00Z`) : undefined;
     const observed = new Date(manual.observedAt);
-    await saveResearchSnapshot({ catalystId: catalyst.id, tradeIdeaId: selected?.idea.id, ticker: manual.ticker, snapshotType: 'market_pricing', observedAt: manual.observedAt, methodology: manual.methodology, provider: 'manual', sourceQuality: manual.source ? 'primary' : 'unverified', freshness: 'manual', fetchedAt: new Date().toISOString(), sourceReference: manual.source, sessionLabel: manual.sessionLabel || undefined, sourceDate: manual.observedAt.slice(0, 10), calendarDaysToCatalyst: eventDate ? Math.round((eventDate.getTime() - observed.getTime()) / 86_400_000) : undefined, catalystTimezone: catalyst.timezoneName, catalystSession: catalyst.marketSession, values: { market_snapshot_version: '1.0', underlying_price: underlyingPrice, expiration: manual.expiration, strategy: selected?.strategy, long_leg: longLeg, short_leg: shortLeg, atm_call_midpoint: callMid, atm_put_midpoint: putMid, event_implied_move_percent: straddleMove?.percentMove, expiration_implied_move_percent: volatilityMove?.percentMove, notes: manual.notes } });
+    await actions.saveSnapshot({ catalystId: catalyst.id, tradeIdeaId: selected?.idea.id, ticker: manual.ticker, snapshotType: 'market_pricing', observedAt: manual.observedAt, methodology: manual.methodology, provider: 'manual', sourceQuality: manual.source ? 'primary' : 'unverified', freshness: 'manual', fetchedAt: new Date().toISOString(), sourceReference: manual.source, sessionLabel: manual.sessionLabel || undefined, sourceDate: manual.observedAt.slice(0, 10), calendarDaysToCatalyst: eventDate ? Math.round((eventDate.getTime() - observed.getTime()) / 86_400_000) : undefined, catalystTimezone: catalyst.timezoneName, catalystSession: catalyst.marketSession, values: { market_snapshot_version: '1.0', underlying_price: underlyingPrice, expiration: manual.expiration, strategy: selected?.strategy, long_leg: longLeg, short_leg: shortLeg, atm_call_midpoint: callMid, atm_put_midpoint: putMid, event_implied_move_percent: straddleMove?.percentMove, expiration_implied_move_percent: volatilityMove?.percentMove, notes: manual.notes } });
     await onSaved();
   };
 
-  const fetchProviders = () => run(async () => setProviders(await loadProviderStatus()), 'Provider availability refreshed. No market-data credits were used.');
-  const fetchOptions = () => run(async () => setFetched(await loadDelayedOptions({ ticker: manual.ticker, expiration: manual.expiration, strikeLimit: Number(strikeLimit) })), 'Delayed option data loaded by explicit request.');
+  const fetchProviders = () => run(async () => setProviders(await actions.loadProviderStatus()), 'Provider availability refreshed. No market-data credits were used.');
+  const fetchOptions = () => run(async () => setFetched(await actions.loadDelayedOptions({ ticker: manual.ticker, expiration: manual.expiration, strikeLimit: Number(strikeLimit) })), 'Delayed option data loaded by explicit request.');
   const saveFetched = () => run(async () => {
     const first = fetched.snapshots[0];
     if (!first) throw new Error('There is no provider snapshot to save.');
-    await saveResearchSnapshot({ catalystId: catalyst.id, tradeIdeaId: selected?.idea.id, ticker: first.ticker, snapshotType: 'market_pricing', observedAt: first.observedAt, methodology: first.methodology, provider: first.provider, sourceQuality: first.sourceQuality, freshness: first.freshness, fetchedAt: first.fetchedAt, sourceReference: first.sourceReference, sourceDate: first.observedAt.slice(0, 10), catalystTimezone: catalyst.timezoneName, catalystSession: catalyst.marketSession, values: { market_snapshot_version: '1.0', option_chain: fetched.snapshots } });
+    await actions.saveSnapshot({ catalystId: catalyst.id, tradeIdeaId: selected?.idea.id, ticker: first.ticker, snapshotType: 'market_pricing', observedAt: first.observedAt, methodology: first.methodology, provider: first.provider, sourceQuality: first.sourceQuality, freshness: first.freshness, fetchedAt: first.fetchedAt, sourceReference: first.sourceReference, sourceDate: first.observedAt.slice(0, 10), catalystTimezone: catalyst.timezoneName, catalystSession: catalyst.marketSession, values: { market_snapshot_version: '1.0', option_chain: fetched.snapshots } });
     await onSaved();
   }, 'Provider snapshot appended to the private Research Ledger.');
 
@@ -111,8 +149,8 @@ export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage 
   };
   const assessment = scenarioResult && candidateEconomics ? earlyEntryAssessment(scenarioResult.expectedValue, candidateEconomics.maxLoss) : earlyEntryAssessment(NaN, NaN);
 
-  return <section className="intelligence-layer" aria-labelledby="intelligence-title">
-    <header className="section-heading"><div><span className="eyebrow">Private analytical layer</span><h2 id="intelligence-title">Catalyst Intelligence</h2><p>Data collection, transparent calculations, and your interpretation remain separate. No trade or Idea is changed automatically.</p></div><span className="status">Zero recurring cost</span></header>
+  return <section className="intelligence-layer" aria-labelledby="intelligence-title" data-shared-ui="catalyst-intelligence">
+    <header className="section-heading"><div><span className="eyebrow">Private analytical layer</span><h2 id="intelligence-title">Catalyst Intelligence</h2><p>Data collection, transparent calculations, and your interpretation remain separate. No trade or Idea is changed automatically.</p></div>{presentation?.badge || <span className="status">Zero recurring cost</span>}</header>
 
     <div className="intelligence-summary">
       <article className="card metric-card"><span>Straddle estimate</span><strong>{straddleMove ? `${straddleMove.percentMove.toFixed(2)}%` : 'Insufficient'}</strong><small>{straddleMove ? `${formatMoney(straddleMove.dollarMove)} from ATM call + put midpoints` : 'Add valid ATM call and put bid/ask.'}</small></article>
@@ -143,7 +181,7 @@ export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage 
         <label className="wide"><span>Methodology</span><textarea value={manual.methodology} onChange={(event) => setManual({ ...manual, methodology: event.target.value })} /></label>
         <label className="wide"><span>Notes</span><textarea value={manual.notes} onChange={(event) => setManual({ ...manual, notes: event.target.value })} /></label>
       </div>
-      <div className="panel-actions"><button className="primary" disabled={busy} onClick={() => void run(saveManual, 'Manual market snapshot appended to the private Research Ledger.')}><Save size={16} />Save Snapshot</button></div>
+      <div className="panel-actions"><button className="primary" disabled={busy} onClick={() => void run(saveManual, 'Manual market snapshot appended to the private Research Ledger.')}><Save size={16} />Save Snapshot</button>{presentation?.reviewAction && <button disabled={busy} onClick={() => void run(async () => presentation.reviewAction!.onReview(number(manual.underlying)), 'Synthetic Intelligence reviewed. No provider request was made.')}>{presentation.reviewAction.label}</button>}</div>
     </details>
 
     <details className="card intelligence-panel" open><summary><span><Calculator size={17} />Candidate Economics &amp; Scenario Lab</span><small>User-controlled assumptions</small></summary>
@@ -166,7 +204,7 @@ export function CatalystIntelligence({ catalyst, workspace, onSaved, setMessage 
     <details className="card intelligence-panel"><summary><span><CloudDownload size={17} />Providers &amp; Methodology</span><small>Explicit refresh only</small></summary>
       <div className="provider-grid">{providers.map((provider) => <article key={provider.id}><span className={`quality-dot ${provider.availability}`} /> <b>{provider.label}</b><small>{provider.availability.replaceAll('_', ' ')} · {provider.freshness}</small><p>{provider.detail}</p></article>)}</div>
       {fetched.snapshots.length > 0 && <div className="provider-chain-preview"><OptionChainSnapshot contracts={fetched.snapshots} cache={fetched.cache} /></div>}
-      <div className="panel-actions"><button disabled={busy} onClick={() => void fetchProviders()}><CloudDownload size={16} />Check Provider Status</button><label className="inline-control"><span>Nearby strikes</span><input type="number" min="1" max="10" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} /></label><button disabled={busy || !manual.ticker || !manual.expiration} onClick={() => void fetchOptions()}>Load Delayed Options</button>{fetched.snapshots.length > 0 && <button className="primary" disabled={busy} onClick={() => void saveFetched()}>Save {fetched.snapshots.length} Contracts</button>}</div>
+      <div className="panel-actions"><button disabled={busy || presentation?.providerActionsEnabled === false} onClick={() => void fetchProviders()}><CloudDownload size={16} />Check Provider Status</button><label className="inline-control"><span>Nearby strikes</span><input type="number" min="1" max="10" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} /></label><button disabled={busy || presentation?.providerActionsEnabled === false || !manual.ticker || !manual.expiration} onClick={() => void fetchOptions()}>Load Delayed Options</button>{fetched.snapshots.length > 0 && <button className="primary" disabled={busy} onClick={() => void saveFetched()}>Save {fetched.snapshots.length} Contracts</button>}</div>
       <p className="method-note">No polling. MarketData requests require one ticker, one exact expiration, and at most 10 nearby strikes. BLS and Treasury use public official endpoints. SEC requires a request identity; FRED, BEA, Census, and MarketData use optional server secrets. Missing credentials never disable manual entry.</p>
     </details>
   </section>;

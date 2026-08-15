@@ -64,11 +64,12 @@ describe('isolated Tutorial Workspace', () => {
     const sources = [
       readFileSync(new URL('./tutorial-workspace.ts', import.meta.url), 'utf8'),
       readFileSync(new URL('./tutorial-fixtures.ts', import.meta.url), 'utf8'),
+      readFileSync(new URL('./tutorial-ui-adapter.ts', import.meta.url), 'utf8'),
       readFileSync(new URL('../../components/GuidedWalkthrough.tsx', import.meta.url), 'utf8'),
     ].join('\n');
     for (const forbidden of [
       'data/actions', 'collaboration-actions', 'lib/supabase', 'saveCatalystRecord', 'saveTradeIdea', 'saveTradeCandidate',
-      'recordEntry', 'saveTradeCheckin', 'recordTradeExit', 'saveDebrief', 'saveResearchSnapshot', 'loadDelayedOptions', 'fetch(',
+      'recordEntry', 'saveTradeCheckin', 'recordTradeExit', 'saveDebrief', 'saveResearchSnapshot', "from '../data/catalyst-intelligence'", 'productionCatalystIntelligenceActions', 'fetch(',
     ]) expect(sources).not.toContain(forbidden);
   });
 });

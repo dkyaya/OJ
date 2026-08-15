@@ -64,6 +64,7 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
   const step = productTourSteps[state.step] || productTourSteps[0];
   const card = useRef<HTMLElement>(null);
   const transitionLock = useRef(false);
+  const protectionRetry = useRef('');
   const [box, setBox] = useState<TourRect>();
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -87,6 +88,7 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
   useLayoutEffect(() => {
     if (step.id === 'war-room' && catalystId) window.location.hash = catalystHash(catalystId).replace(/^#/, '');
     else navigate(step.route);
+    protectionRetry.current = '';
     setBox(undefined); setMissing(false);
     let attempt = 0; let timer = 0; let target: HTMLElement | null = null;
     const measure = () => {
@@ -129,14 +131,25 @@ export function ProductTour({ state, catalystId, onStep, onPause, onFinish }: {
   const margin = mobile ? 10 : 16;
   const cardWidth = Math.min(380, Math.max(280, viewport.width - margin * 2));
   const placement = placeTourCallout({ viewport, target: box, card: { width: cardWidth, height: Math.min(cardHeight, viewport.height - margin * 2) }, margin, mobile });
-  const style = { '--tour-card-left': `${placement.left}px`, '--tour-card-top': `${placement.top}px`, '--tour-card-width': `${cardWidth}px`, '--tour-card-max-height': `${placement.height}px` } as CSSProperties;
+  useLayoutEffect(() => {
+    if (!box || placement || missing) return;
+    const retryKey = `${step.id}:${viewport.width}x${viewport.height}`;
+    if (protectionRetry.current === retryKey) return;
+    protectionRetry.current = retryKey;
+    const target = document.querySelector<HTMLElement>(`[data-tour-id="${step.target}"]`);
+    if (!target) return;
+    target.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+    const timer = window.setTimeout(() => setBox(targetBox(target)), 0);
+    return () => window.clearTimeout(timer);
+  }, [box, missing, placement, step.id, step.target, viewport.height, viewport.width]);
+  const style = placement ? { '--tour-card-left': `${placement.left}px`, '--tour-card-top': `${placement.top}px`, '--tour-card-width': `${cardWidth}px`, '--tour-card-max-height': `${placement.height}px` } as CSSProperties : undefined;
   const highlight = box ? { top: box.top, left: box.left, width: box.width, height: box.height } : undefined;
   const finalStep = state.step === productTourSteps.length - 1;
 
   return <div className="product-tour-layer" data-missing-target={missing ? 'true' : undefined} style={style}>
     <div className="product-tour-wash" aria-hidden="true" />
     {highlight && <div className="product-tour-highlight" aria-hidden="true" style={highlight} />}
-    <section className="product-tour-card" data-placement={placement.placement} role="dialog" aria-modal="false" aria-labelledby="product-tour-title" aria-describedby="product-tour-description" tabIndex={-1} ref={card}>
+    <section className="product-tour-card" data-placement={placement?.placement || 'awaiting-protected-space'} hidden={!placement} role="dialog" aria-modal="false" aria-labelledby="product-tour-title" aria-describedby="product-tour-description" tabIndex={-1} ref={card}>
       <header><div><span className="eyebrow">{step.eyebrow}</span><span className="tour-progress">{state.step + 1} / {productTourSteps.length}</span></div><button className="icon-button" aria-label="Pause product tour" disabled={busy} onClick={() => void go(onPause)}><X size={18} /></button></header>
       <div className="tour-progress-track" aria-hidden="true"><span style={{ width: `${((state.step + 1) / productTourSteps.length) * 100}%` }} /></div>
       <h2 id="product-tour-title">{step.title}</h2>

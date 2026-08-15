@@ -59,46 +59,56 @@ describe('Guided Walkthrough behavior', () => {
     await click('Next');
 
     expect(container.textContent).toContain('Tutorial Fixture');
-    expect(container.textContent).toContain('expected move');
+    expect(container.textContent).toContain('Straddle estimate');
+    expect(container.querySelector('[data-shared-ui="catalyst-intelligence"]')).not.toBeNull();
     await click('Mark Intelligence Reviewed');
     await click('Next');
 
-    await click('Continue to Catalyst');
-    await click('Continue to Research');
+    expect(container.querySelector('[data-shared-ui="idea-editor"]')).not.toBeNull();
+    await click('Next');
+    await click('Next');
     await click('Save Tutorial Idea');
     await click('Next');
 
+    expect(container.querySelector('[data-shared-ui-section="candidate-editor"]')).not.toBeNull();
     expect(container.textContent).toContain('$140.00');
     expect(container.textContent).toContain('$360.00');
     await click('Save Candidate');
     await click('Next');
 
+    expect(container.querySelector('[data-shared-ui="record-trade-editor"]')).not.toBeNull();
     const confirmation = container.querySelector<HTMLInputElement>('input[type="checkbox"]');
     if (!confirmation) throw new Error('Trade boundary confirmation was not rendered.');
     await act(async () => { confirmation.click(); });
     expect(container.textContent).toContain('$132.00');
     expect(container.textContent).toContain('$368.00');
     expect(container.textContent).toContain('101.32');
-    await click('Record Tutorial Trade');
+    await click('Record Trade');
     await click('Next');
 
+    expect(container.querySelector('[data-shared-ui="trade-detail-surface"]')).not.toBeNull();
+    expect(container.querySelector('[data-shared-ui="trade-checkin-editor"]')).not.toBeNull();
     await click('Save Check-In');
-    expect(container.textContent).toContain('never enters the real Journal');
+    expect(container.textContent).toContain('saved outside the Journal');
     await click('Next');
 
     expect(container.textContent).toContain('+$78.00');
-    await click('Record Tutorial Exit');
+    const exitConfirmation = container.querySelector<HTMLInputElement>('.confirm-row input[type="checkbox"]');
+    if (!exitConfirmation) throw new Error('Exit boundary confirmation was not rendered.');
+    await act(async () => { exitConfirmation.click(); });
+    await click('Record Exit & Debrief');
     await click('Next');
 
-    await click('Save Tutorial Debrief');
+    expect(container.querySelector('[data-shared-ui="debrief-editor"]')).not.toBeNull();
+    await click('Save Debrief');
     await click('Next');
     expect(container.textContent).toContain('Excluded from real analytics');
+    expect(container.querySelector('[data-tour-id="insights-shell"]')).not.toBeNull();
     expect(container.textContent).toContain('No risk capacity, Journal, calibration, collaboration, export, or provider cache was touched.');
     await click('Finish & Clear Tutorial');
 
     expect(onFinish).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain('— / —');
-    expect(container.textContent).not.toContain('$1.40 / $1.32');
+    expect(container.textContent).toContain('Confirmed Trades0');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

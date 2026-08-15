@@ -24,7 +24,7 @@ export function placeTourCallout({ viewport, target, card, margin = 16, gap = 14
   margin?: number;
   gap?: number;
   mobile?: boolean;
-}): TourPlacement {
+}): TourPlacement | undefined {
   const maxLeft = Math.max(margin, viewport.width - margin - card.width);
   const maxTop = Math.max(margin, viewport.height - margin - card.height);
   if (!target) return {
@@ -51,14 +51,13 @@ export function placeTourCallout({ viewport, target, card, margin = 16, gap = 14
 
   const topHeight = Math.min(card.height, Math.max(0, target.top - gap - margin));
   const bottomHeight = Math.min(card.height, Math.max(0, viewport.height - margin - bottom(target) - gap));
-  const readableMinimum = Math.min(120, card.height);
   const detached: TourPlacement[] = [
-    ...(topHeight >= readableMinimum ? [
+    ...(topHeight > 0 ? [
       { placement: 'detached-top' as const, anchored: false, left: margin, top: margin, height: topHeight },
       { placement: 'detached-top' as const, anchored: false, left: maxLeft, top: margin, height: topHeight },
       { placement: 'detached-top' as const, anchored: false, left: clamp((viewport.width - card.width) / 2, margin, maxLeft), top: margin, height: topHeight },
     ] : []),
-    ...(bottomHeight >= readableMinimum ? [
+    ...(bottomHeight > 0 ? [
       { placement: 'detached-bottom' as const, anchored: false, left: margin, top: bottom(target) + gap, height: bottomHeight },
       { placement: 'detached-bottom' as const, anchored: false, left: maxLeft, top: bottom(target) + gap, height: bottomHeight },
       { placement: 'detached-bottom' as const, anchored: false, left: clamp((viewport.width - card.width) / 2, margin, maxLeft), top: bottom(target) + gap, height: bottomHeight },
@@ -68,18 +67,8 @@ export function placeTourCallout({ viewport, target, card, margin = 16, gap = 14
   const collisionFree = detached.find((candidate) => tourRectInsideViewport(positionRect(candidate, card), viewport, margin) && !tourRectsOverlap(positionRect(candidate, card), target));
   if (collisionFree) return collisionFree;
 
-  const fullHeightDetached: TourPlacement[] = [
-    { placement: 'detached-top', anchored: false, left: margin, top: margin, height: card.height },
-    { placement: 'detached-top', anchored: false, left: maxLeft, top: margin, height: card.height },
-    { placement: 'detached-bottom', anchored: false, left: margin, top: maxTop, height: card.height },
-    { placement: 'detached-bottom', anchored: false, left: maxLeft, top: maxTop, height: card.height },
-  ];
-
-  const overlapArea = (candidate: TourPlacement) => {
-    const rect = positionRect(candidate, card);
-    const width = Math.max(0, Math.min(right(rect), right(target)) - Math.max(rect.left, target.left));
-    const height = Math.max(0, Math.min(bottom(rect), bottom(target)) - Math.max(rect.top, target.top));
-    return width * height;
-  };
-  return fullHeightDetached.sort((a, b) => overlapArea(a) - overlapArea(b))[0];
+  // There is no "least overlap" escape hatch. If geometry leaves literally no
+  // protected region, the controller withholds the callout and remeasures after
+  // scrolling instead of obscuring the element it is explaining.
+  return undefined;
 }

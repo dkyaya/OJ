@@ -23,6 +23,7 @@ describe('Trade workflow presentation', () => {
   it('opens Record Trade from a qualified Idea with Candidate values prepopulated', () => {
     const html = renderToStaticMarkup(<TradesPage workspace={demoWorkspace} initialIdeaId={demoWorkspace.ideas[0].id} onSaved={() => undefined} onDebrief={() => undefined} />);
     expect(html).toContain('Record Trade');
+    expect(html).toContain('data-shared-ui="record-trade-editor"');
     expect(html).toContain('Actual Expiration');
     expect(html).toContain('value="2026-09-18"');
     expect(html).toContain('Planned Candidate');
@@ -39,6 +40,7 @@ describe('Trade workflow presentation', () => {
   it('keeps the original plan, actual execution, and entry research together', () => {
     const html = renderToStaticMarkup(<TradesPage workspace={{ ...demoWorkspace, positions: [activeTrade] }} onSaved={() => undefined} onDebrief={() => undefined} />);
     expect(html).toContain('Original synthetic entry thesis.');
+    expect(html).toContain('data-shared-ui="trade-detail-surface"');
     expect(html).toContain('Planned Candidate at Entry');
     expect(html).toContain('Actual Execution');
     expect(html).toContain('Locked Forecast');
