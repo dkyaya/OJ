@@ -1,0 +1,483 @@
+From 47529badafa432885b4693daef55912b146f102f Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Sat, 15 Aug 2026 18:46:12 -0400
+Subject: [PATCH 1/3] Introduce isolated Guided Tutorial workspace
+
+---
+ app/src/features/tour/guided-tutorial.test.ts |  16 ++
+ app/src/features/tour/guided-tutorial.ts      |  59 ++++++
+ app/src/features/tour/tutorial-fixtures.ts    |  87 ++++++++
+ .../features/tour/tutorial-workspace.test.ts  |  73 +++++++
+ app/src/features/tour/tutorial-workspace.ts   | 197 ++++++++++++++++++
+ 5 files changed, 432 insertions(+)
+ create mode 100644 app/src/features/tour/guided-tutorial.test.ts
+ create mode 100644 app/src/features/tour/guided-tutorial.ts
+ create mode 100644 app/src/features/tour/tutorial-fixtures.ts
+ create mode 100644 app/src/features/tour/tutorial-workspace.test.ts
+ create mode 100644 app/src/features/tour/tutorial-workspace.ts
+
+diff --git a/app/src/features/tour/guided-tutorial.test.ts b/app/src/features/tour/guided-tutorial.test.ts
+new file mode 100644
+index 0000000..e9b1637
+--- /dev/null
++++ b/app/src/features/tour/guided-tutorial.test.ts
+@@ -0,0 +1,16 @@
++import { describe, expect, it } from 'vitest';
++import { createGuidedTutorialState, guidedTutorialActionLabel, guidedTutorialPreferenceData, guidedTutorialSteps, readGuidedTutorialState } from './guided-tutorial';
++
++describe('Guided Walkthrough preference state', () => {
++  it('stores only bounded onboarding progress and preserves unrelated preferences', () => {
++    const state = createGuidedTutorialState('paused', 4, new Date('2026-08-15T12:00:00Z'));
++    expect(guidedTutorialPreferenceData({ productTour: { version: 1 } }, state)).toEqual({ productTour: { version: 1 }, guidedWalkthrough: state });
++    expect(Object.keys(state).sort()).toEqual(['stage', 'status', 'updatedAt', 'version']);
++    expect(guidedTutorialActionLabel(state)).toBe('Resume Guided Walkthrough');
++  });
++
++  it('clamps progress and resets an older version', () => {
++    expect(readGuidedTutorialState({ guidedWalkthrough: { version: 1, status: 'in_progress', stage: 999 } }).stage).toBe(guidedTutorialSteps.length - 1);
++    expect(readGuidedTutorialState({ guidedWalkthrough: { version: 0, status: 'completed', stage: 8 } })).toMatchObject({ status: 'not_started', stage: 0 });
++  });
++});
+diff --git a/app/src/features/tour/guided-tutorial.ts b/app/src/features/tour/guided-tutorial.ts
+new file mode 100644
+index 0000000..fbd7b11
+--- /dev/null
++++ b/app/src/features/tour/guided-tutorial.ts
+@@ -0,0 +1,59 @@
++export const GUIDED_TUTORIAL_VERSION = 1;
++
++export type GuidedTutorialStatus = 'not_started' | 'in_progress' | 'paused' | 'completed' | 'skipped';
++
++export type GuidedTutorialState = {
++  version: number;
++  status: GuidedTutorialStatus;
++  stage: number;
++  updatedAt?: string;
++};
++
++export const guidedTutorialSteps = [
++  { id: 'catalyst', title: 'Create a Catalyst', eyebrow: 'Scheduled fact' },
++  { id: 'intelligence', title: 'Inspect Catalyst Intelligence', eyebrow: 'Priced uncertainty' },
++  { id: 'idea', title: 'Build an Idea', eyebrow: 'Your interpretation' },
++  { id: 'candidate', title: 'Save a Candidate', eyebrow: 'The plan' },
++  { id: 'trade', title: 'Record the Fill', eyebrow: 'What happened elsewhere' },
++  { id: 'monitoring', title: 'Add a Check-In', eyebrow: 'Monitor the live thesis' },
++  { id: 'exit', title: 'Record the Exit', eyebrow: 'Close the history' },
++  { id: 'debrief', title: 'Write the Debrief', eyebrow: 'Reflect after the outcome' },
++  { id: 'insights', title: 'Understand Insights', eyebrow: 'Learn from real history' },
++] as const;
++
++const defaultState = (): GuidedTutorialState => ({ version: GUIDED_TUTORIAL_VERSION, status: 'not_started', stage: 0 });
++
++export function readGuidedTutorialState(data: unknown): GuidedTutorialState {
++  if (!data || typeof data !== 'object' || Array.isArray(data)) return defaultState();
++  const raw = (data as Record<string, unknown>).guidedWalkthrough;
++  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaultState();
++  const value = raw as Record<string, unknown>;
++  if (value.version !== GUIDED_TUTORIAL_VERSION) return defaultState();
++  const status = typeof value.status === 'string' && ['not_started', 'in_progress', 'paused', 'completed', 'skipped'].includes(value.status)
++    ? value.status as GuidedTutorialStatus
++    : 'not_started';
++  const rawStage = typeof value.stage === 'number' && Number.isFinite(value.stage) ? Math.floor(value.stage) : 0;
++  return {
++    version: GUIDED_TUTORIAL_VERSION,
++    status,
++    stage: Math.max(0, Math.min(guidedTutorialSteps.length - 1, rawStage)),
++    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : undefined,
++  };
++}
++
++export function createGuidedTutorialState(status: GuidedTutorialStatus, stage = 0, now = new Date()): GuidedTutorialState {
++  return {
++    version: GUIDED_TUTORIAL_VERSION,
++    status,
++    stage: Math.max(0, Math.min(guidedTutorialSteps.length - 1, Math.floor(stage))),
++    updatedAt: now.toISOString(),
++  };
++}
++
++export function guidedTutorialPreferenceData(data: Record<string, unknown> | undefined, state: GuidedTutorialState) {
++  return { ...(data || {}), guidedWalkthrough: state };
++}
++
++export function guidedTutorialActionLabel(state: GuidedTutorialState) {
++  return state.status === 'paused' || state.status === 'in_progress' ? 'Resume Guided Walkthrough' : 'Start Guided Walkthrough';
++}
+diff --git a/app/src/features/tour/tutorial-fixtures.ts b/app/src/features/tour/tutorial-fixtures.ts
+new file mode 100644
+index 0000000..6a17d1f
+--- /dev/null
++++ b/app/src/features/tour/tutorial-fixtures.ts
+@@ -0,0 +1,87 @@
++import type { MarketSnapshot } from '../../lib/catalyst-intelligence/types';
++
++const dateKey = (date: Date) => date.toISOString().slice(0, 10);
++const addDays = (date: Date, days: number) => {
++  const next = new Date(date);
++  next.setUTCDate(next.getUTCDate() + days);
++  return next;
++};
++
++export type TutorialFixture = {
++  catalystDate: string;
++  expiration: string;
++  observedAt: string;
++  options: MarketSnapshot[];
++};
++
++const contract = (
++  fixture: Omit<TutorialFixture, 'options'>,
++  optionSide: 'call' | 'put',
++  strike: number,
++  bid: number,
++  ask: number,
++  impliedVolatility: number,
++): MarketSnapshot => ({
++  provider: 'Tutorial Fixture',
++  sourceReference: 'Bundled synthetic options snapshot',
++  sourceQuality: 'unverified',
++  observedAt: fixture.observedAt,
++  fetchedAt: fixture.observedAt,
++  freshness: 'manual',
++  ticker: 'OJDEMO',
++  assetType: 'Synthetic security',
++  underlyingPrice: 100,
++  expiration: fixture.expiration,
++  contractSymbol: `OJDEMO-${fixture.expiration}-${strike}-${optionSide.toUpperCase()}`,
++  optionSide,
++  strike,
++  bid,
++  ask,
++  impliedVolatility,
++  volume: 100 + strike,
++  openInterest: 500 + strike,
++  methodology: 'Bundled synthetic tutorial fixture; no provider request made.',
++  provenance: 'manual',
++});
++
++export function createTutorialFixture(now = new Date()): TutorialFixture {
++  const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 14));
++  const fixture: Omit<TutorialFixture, 'options'> = {
++    catalystDate: dateKey(addDays(base, 14)),
++    expiration: dateKey(addDays(base, 21)),
++    observedAt: base.toISOString(),
++  };
++  return {
++    ...fixture,
++    options: [
++      contract(fixture, 'call', 95, 6.2, 6.6, 0.27),
++      contract(fixture, 'put', 95, 1.15, 1.35, 0.26),
++      contract(fixture, 'call', 100, 2.6, 2.8, 0.24),
++      contract(fixture, 'put', 100, 2.4, 2.6, 0.24),
++      contract(fixture, 'call', 105, 0.95, 1.15, 0.25),
++      contract(fixture, 'put', 105, 5.9, 6.3, 0.28),
++    ],
++  };
++}
++
++export const tutorialStory = {
++  company: 'OJ Tutorial Co.',
++  ticker: 'OJDEMO',
++  event: 'OJ Tutorial Co. Q2 Earnings',
++  ideaTitle: 'Bullish earnings setup',
++  strategy: 'Bull Call Spread',
++  bias: 'Bullish',
++  thesis: 'Confirmation above the post-earnings range could support a measured move higher.',
++  evidence: 'The Tutorial Fixture shows event uncertainty without making a directional forecast.',
++  entryConditions: 'Price holds above the confirmed support zone after the event.',
++  invalidation: 'Close below the post-event support zone.',
++  plannedExit: 'Review after the event and exit before the synthetic expiration.',
++  longStrike: 100,
++  shortStrike: 105,
++  plannedDebit: 1.4,
++  actualDebit: 1.32,
++  contracts: 1,
++  checkin: 'Price is holding above the post-entry support zone.',
++  exitValue: 2.1,
++  lesson: 'The Catalyst thesis strengthened after confirmation.',
++};
+diff --git a/app/src/features/tour/tutorial-workspace.test.ts b/app/src/features/tour/tutorial-workspace.test.ts
+new file mode 100644
+index 0000000..7f94385
+--- /dev/null
++++ b/app/src/features/tour/tutorial-workspace.test.ts
+@@ -0,0 +1,73 @@
++import { readFileSync } from 'node:fs';
++import { describe, expect, it } from 'vitest';
++import { demoWorkspace } from '../../data/demo';
++import {
++  addTutorialCheckin,
++  clearTutorialWorkspace,
++  createTutorialCatalyst,
++  createTutorialWorkspace,
++  recordTutorialExit,
++  recordTutorialTrade,
++  reconstructTutorialWorkspace,
++  reviewTutorialIntelligence,
++  saveTutorialCandidate,
++  saveTutorialDebrief,
++  saveTutorialIdea,
++  tutorialStageComplete,
++} from './tutorial-workspace';
++
++describe('isolated Tutorial Workspace', () => {
++  it('completes the synthetic Catalyst-to-Insights story with production math', () => {
++    let workspace = createTutorialWorkspace('full-story', new Date('2026-08-15T12:00:00Z'));
++    workspace = createTutorialCatalyst(workspace);
++    workspace = reviewTutorialIntelligence(workspace, 104);
++    workspace = saveTutorialIdea(workspace);
++    workspace = saveTutorialCandidate(workspace);
++    expect(workspace.candidate?.metrics).toMatchObject({ width: 5, maxLoss: 140, maxProfit: 360, breakEven: 101.4 });
++    workspace = recordTutorialTrade(workspace);
++    expect(workspace.trade?.actualDebit).toBe(1.32);
++    expect(workspace.trade?.metrics).toMatchObject({ maxLoss: 132, maxProfit: 368, breakEven: 101.32 });
++    workspace = addTutorialCheckin(workspace);
++    workspace = recordTutorialExit(workspace);
++    expect(workspace.exit?.realizedPnl).toBe(78);
++    workspace = saveTutorialDebrief(workspace);
++    expect(workspace.debrief?.lesson).toContain('strengthened');
++    expect(tutorialStageComplete(workspace, 8)).toBe(true);
++  });
++
++  it('cannot contaminate risk, Journal, Insights, calibration, collaboration, or exports', () => {
++    const realBefore = structuredClone(demoWorkspace);
++    let tutorial = reconstructTutorialWorkspace(8, 'exclusion', new Date('2026-08-15T12:00:00Z'));
++    expect(tutorial.trade?.metrics.maxLoss).toBe(132);
++    expect(demoWorkspace).toEqual(realBefore);
++    expect(demoWorkspace.positions).toEqual(realBefore.positions);
++    expect(demoWorkspace.journal).toEqual(realBefore.journal);
++    expect(demoWorkspace.researchSnapshots).toEqual(realBefore.researchSnapshots);
++    expect(demoWorkspace.activity).toEqual(realBefore.activity);
++    tutorial = clearTutorialWorkspace(tutorial);
++    expect(tutorial.kind).toBe('tutorial');
++    expect([tutorial.catalyst, tutorial.idea, tutorial.trade, tutorial.checkin, tutorial.exit, tutorial.debrief]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
++    expect(demoWorkspace).toEqual(realBefore);
++  });
++
++  it('reconstructs only deterministic prerequisites for resume and clears on restart/finish', () => {
++    const resumed = reconstructTutorialWorkspace(5, 'resume', new Date('2026-08-15T12:00:00Z'));
++    expect(resumed.trade).toBeDefined();
++    expect(resumed.checkin).toBeUndefined();
++    const cleared = clearTutorialWorkspace(resumed);
++    expect(cleared.catalyst).toBeUndefined();
++    expect(cleared.fixture.options).toHaveLength(6);
++    expect(cleared.sessionId).toBe('resume');
++  });
++
++  it('has a structural no-write and no-provider import boundary', () => {
++    const sources = [
++      readFileSync(new URL('./tutorial-workspace.ts', import.meta.url), 'utf8'),
++      readFileSync(new URL('./tutorial-fixtures.ts', import.meta.url), 'utf8'),
++    ].join('\n');
++    for (const forbidden of [
++      'data/actions', 'collaboration-actions', 'lib/supabase', 'saveCatalystRecord', 'saveTradeIdea', 'saveTradeCandidate',
++      'recordEntry', 'saveTradeCheckin', 'recordTradeExit', 'saveDebrief', 'saveResearchSnapshot', 'loadDelayedOptions', 'fetch(',
++    ]) expect(sources).not.toContain(forbidden);
++  });
++});
+diff --git a/app/src/features/tour/tutorial-workspace.ts b/app/src/features/tour/tutorial-workspace.ts
+new file mode 100644
+index 0000000..5a64e45
+--- /dev/null
++++ b/app/src/features/tour/tutorial-workspace.ts
+@@ -0,0 +1,197 @@
++import { spreadMetrics, type SpreadMetrics } from '../../lib/payoff';
++import { realizedVerticalPnl } from '../../lib/trade-lifecycle';
++import { createTutorialFixture, tutorialStory, type TutorialFixture } from './tutorial-fixtures';
++
++export type TutorialCatalyst = {
++  id: string;
++  event: string;
++  ticker: string;
++  date: string;
++  time: string;
++  category: string;
++  visibility: 'private';
++};
++
++export type TutorialIdea = {
++  id: string;
++  ticker: string;
++  strategy: string;
++  bias: string;
++  status: 'watchlist';
++  catalystId: string;
++  thesis: string;
++  evidence: string;
++  entryConditions: string;
++  invalidation: string;
++  plannedExit: string;
++};
++
++export type TutorialCandidate = {
++  id: string;
++  longStrike: number;
++  shortStrike: number;
++  debit: number;
++  contracts: number;
++  expiration: string;
++  metrics: SpreadMetrics;
++};
++
++export type TutorialTrade = {
++  id: string;
++  actualDebit: number;
++  openedAt: string;
++  metrics: SpreadMetrics;
++};
++
++export type TutorialWorkspace = {
++  kind: 'tutorial';
++  sessionId: string;
++  fixture: TutorialFixture;
++  catalyst?: TutorialCatalyst;
++  intelligenceReviewed: boolean;
++  scenarioPrice: number;
++  idea?: TutorialIdea;
++  candidate?: TutorialCandidate;
++  trade?: TutorialTrade;
++  checkin?: { id: string; thesisHealth: 'intact'; note: string };
++  exit?: { id: string; value: number; realizedPnl: number };
++  debrief?: { id: string; lesson: string };
++};
++
++export function createTutorialWorkspace(sessionId: string, now = new Date()): TutorialWorkspace {
++  return {
++    kind: 'tutorial',
++    sessionId,
++    fixture: createTutorialFixture(now),
++    intelligenceReviewed: false,
++    scenarioPrice: 104,
++  };
++}
++
++export function createTutorialCatalyst(workspace: TutorialWorkspace, input?: Partial<Omit<TutorialCatalyst, 'id' | 'visibility'>>): TutorialWorkspace {
++  return {
++    ...workspace,
++    catalyst: {
++      id: `tutorial-catalyst-${workspace.sessionId}`,
++      event: input?.event || tutorialStory.event,
++      ticker: input?.ticker || tutorialStory.ticker,
++      date: input?.date || workspace.fixture.catalystDate,
++      time: input?.time || '16:05',
++      category: input?.category || 'Earnings',
++      visibility: 'private',
++    },
++  };
++}
++
++export function reviewTutorialIntelligence(workspace: TutorialWorkspace, scenarioPrice: number): TutorialWorkspace {
++  if (!workspace.catalyst) throw new Error('Create the Tutorial Catalyst first.');
++  if (!Number.isFinite(scenarioPrice) || scenarioPrice <= 0) throw new Error('Enter a valid scenario price.');
++  return { ...workspace, intelligenceReviewed: true, scenarioPrice };
++}
++
++export function saveTutorialIdea(workspace: TutorialWorkspace, input?: Partial<Omit<TutorialIdea, 'id' | 'catalystId' | 'status'>>): TutorialWorkspace {
++  if (!workspace.catalyst || !workspace.intelligenceReviewed) throw new Error('Review the Tutorial Catalyst and its Intelligence first.');
++  return {
++    ...workspace,
++    idea: {
++      id: `tutorial-idea-${workspace.sessionId}`,
++      ticker: input?.ticker || tutorialStory.ticker,
++      strategy: input?.strategy || tutorialStory.strategy,
++      bias: input?.bias || tutorialStory.bias,
++      status: 'watchlist',
++      catalystId: workspace.catalyst.id,
++      thesis: input?.thesis || tutorialStory.thesis,
++      evidence: input?.evidence || tutorialStory.evidence,
++      entryConditions: input?.entryConditions || tutorialStory.entryConditions,
++      invalidation: input?.invalidation || tutorialStory.invalidation,
++      plannedExit: input?.plannedExit || tutorialStory.plannedExit,
++    },
++  };
++}
++
++export function saveTutorialCandidate(workspace: TutorialWorkspace, input?: { longStrike?: number; shortStrike?: number; debit?: number; contracts?: number }): TutorialWorkspace {
++  if (!workspace.idea) throw new Error('Save the Tutorial Idea first.');
++  const longStrike = input?.longStrike ?? tutorialStory.longStrike;
++  const shortStrike = input?.shortStrike ?? tutorialStory.shortStrike;
++  const debit = input?.debit ?? tutorialStory.plannedDebit;
++  const contracts = input?.contracts ?? tutorialStory.contracts;
++  const metrics = spreadMetrics('bull-call-spread', longStrike, shortStrike, debit, contracts);
++  if (!metrics) throw new Error('Enter a valid bull call spread Candidate.');
++  return {
++    ...workspace,
++    candidate: {
++      id: `tutorial-candidate-${workspace.sessionId}`,
++      longStrike,
++      shortStrike,
++      debit,
++      contracts,
++      expiration: workspace.fixture.expiration,
++      metrics,
++    },
++  };
++}
++
++export function recordTutorialTrade(workspace: TutorialWorkspace, actualDebit = tutorialStory.actualDebit): TutorialWorkspace {
++  if (!workspace.candidate) throw new Error('Save the Tutorial Candidate first.');
++  const metrics = spreadMetrics('bull-call-spread', workspace.candidate.longStrike, workspace.candidate.shortStrike, actualDebit, workspace.candidate.contracts);
++  if (!metrics) throw new Error('Enter a valid actual fill.');
++  return {
++    ...workspace,
++    trade: {
++      id: `tutorial-trade-${workspace.sessionId}`,
++      actualDebit,
++      openedAt: workspace.fixture.observedAt,
++      metrics,
++    },
++  };
++}
++
++export function addTutorialCheckin(workspace: TutorialWorkspace, note = tutorialStory.checkin): TutorialWorkspace {
++  if (!workspace.trade) throw new Error('Record the Tutorial Trade first.');
++  if (!note.trim()) throw new Error('Add one concise monitoring note.');
++  return { ...workspace, checkin: { id: `tutorial-checkin-${workspace.sessionId}`, thesisHealth: 'intact', note: note.trim() } };
++}
++
++export function recordTutorialExit(workspace: TutorialWorkspace, value = tutorialStory.exitValue): TutorialWorkspace {
++  if (!workspace.trade || !workspace.candidate) throw new Error('Record and monitor the Tutorial Trade first.');
++  const realizedPnl = realizedVerticalPnl(workspace.trade.actualDebit, 0, value, 'credit', 0, workspace.candidate.contracts);
++  if (realizedPnl === null) throw new Error('Enter a valid Tutorial exit value.');
++  return { ...workspace, exit: { id: `tutorial-exit-${workspace.sessionId}`, value, realizedPnl } };
++}
++
++export function saveTutorialDebrief(workspace: TutorialWorkspace, lesson = tutorialStory.lesson): TutorialWorkspace {
++  if (!workspace.exit) throw new Error('Record the Tutorial Exit first.');
++  if (!lesson.trim()) throw new Error('Add one short lesson.');
++  return { ...workspace, debrief: { id: `tutorial-debrief-${workspace.sessionId}`, lesson: lesson.trim() } };
++}
++
++export function clearTutorialWorkspace(workspace: TutorialWorkspace): TutorialWorkspace {
++  return createTutorialWorkspace(workspace.sessionId, new Date(workspace.fixture.observedAt));
++}
++
++export function reconstructTutorialWorkspace(stage: number, sessionId: string, now = new Date()): TutorialWorkspace {
++  let workspace = createTutorialWorkspace(sessionId, now);
++  if (stage >= 1) workspace = createTutorialCatalyst(workspace);
++  if (stage >= 2) workspace = reviewTutorialIntelligence(workspace, 104);
++  if (stage >= 3) workspace = saveTutorialIdea(workspace);
++  if (stage >= 4) workspace = saveTutorialCandidate(workspace);
++  if (stage >= 5) workspace = recordTutorialTrade(workspace);
++  if (stage >= 6) workspace = addTutorialCheckin(workspace);
++  if (stage >= 7) workspace = recordTutorialExit(workspace);
++  if (stage >= 8) workspace = saveTutorialDebrief(workspace);
++  return workspace;
++}
++
++export function tutorialStageComplete(workspace: TutorialWorkspace, stage: number): boolean {
++  return [
++    Boolean(workspace.catalyst),
++    workspace.intelligenceReviewed,
++    Boolean(workspace.idea),
++    Boolean(workspace.candidate),
++    Boolean(workspace.trade),
++    Boolean(workspace.checkin),
++    Boolean(workspace.exit),
++    Boolean(workspace.debrief),
++    Boolean(workspace.debrief),
++  ][stage] ?? false;
++}
+-- 
+2.50.1 (Apple Git-155)
+
