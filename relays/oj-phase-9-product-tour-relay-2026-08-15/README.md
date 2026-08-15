@@ -100,6 +100,9 @@ First-use invitation appears only for an approved authenticated non-demo user wi
 - Active tour is a labeled non-modal dialog; route content remains available.
 - Back, Next, Pause, and Finish have visible text and keyboard focus.
 - Left/Right arrows move steps; Escape pauses.
+- Left/Right arrows are ignored when the event begins in an input, textarea, select, contenteditable region, or equivalent text-entry role, preserving caret, selection, and chooser behavior.
+- Meta/Ctrl/Alt + Left/Right remain available to the browser and operating system.
+- Take, Skip, Back, Next, Pause, Finish, and keyboard actions share a synchronous transition lock. A second action is ignored until the preference save settles, and failures release the lock.
 - A missing anchor includes explicit explanatory text rather than an invisible position.
 - Target focus/measurement updates after route changes and resize/scroll.
 - `prefers-reduced-motion` disables tour animation, target transition, progress animation, and smooth scrolling.
@@ -121,21 +124,23 @@ Local final checks:
 
 - `npm run typecheck` — pass.
 - `npm run lint` — pass, zero warnings.
-- `npm test` — pass, **53 files / 235 tests**.
-- `npm run build` — pass, 1,682 transformed modules.
+- `npm test` — pass, **54 files / 247 tests**.
+- `npm run build` — pass, 1,683 transformed modules.
 - `npm run copy:check` — pass.
 - `npm run privacy:check` — pass.
 - `npm audit --audit-level=high` — pass, 0 vulnerabilities.
 - `git diff --check` — pass.
 
-Coverage added for first-use copy; Take/Skip controls; version reset; skipped/completed/in-progress state; Settings replay/resume label; Back/Next/Finish; all route/target mappings; populated and empty accounts; example-dependent fallback; three custom mobile-nav sets; no domain/provider dependencies; responsive/safe-area/reduced-motion CSS; Check-In retention under Trade; Check-In Debrief context; Journal exclusion; Debrief rendering; Journal empty state; and deterministic Overview time.
+Coverage added for first-use copy; Take/Skip controls; version reset; skipped/completed/in-progress state; Settings replay/resume label; Back/Next/Finish; all route/target mappings; populated and empty accounts; example-dependent fallback; three custom mobile-nav sets; no domain/provider dependencies; responsive/safe-area/reduced-motion CSS; Check-In retention under Trade; Check-In Debrief context; Journal exclusion; Debrief rendering; Journal empty state; and deterministic Overview time. The review addendum adds real DOM/effect coverage for Tour focus; forward/backward arrows; input, textarea, select, and nested contenteditable protection; Meta/Ctrl/Alt modifiers; Escape; cross-input transition locking; post-settlement reuse; failure recovery; and first-use Take/Skip locking.
 
-PR #24 CI run `31910555192` is green:
+PR #24 keyboard-safety CI run [`31911374934`](https://github.com/dkyaya/OJ/actions/runs/31911374934) is green:
 
 - OJ Public Validate — success.
 - OJ Public Test — success.
 - OJ Public Build — success.
 - OJ Public Security — success.
+
+GitHub emitted a non-blocking Node.js 20 action-runtime deprecation annotation for `actions/checkout@v4` and `actions/setup-node@v4`; all application steps ran under the configured Node 22 and passed. Updating third-party action majors is outside this review addendum.
 
 Live local browser screenshots were not available: the Work sandbox rejected local listeners with `EPERM`, and browser policy blocked direct `file://` navigation. No visual-run claim is made. The responsive rules and semantic surfaces have render/static integration coverage, but the post-deployment manual matrix below remains required.
 
@@ -164,6 +169,8 @@ Live local browser screenshots were not available: the Work sandbox rejected loc
 - [ ] Tablet: 768×1024.
 - [ ] Mobile: 430×932, 390×844, 375×667, 320×568.
 - [ ] Keyboard, Escape, focus order, and reduced-motion behavior pass.
+- [ ] Arrow keys in route inputs, textareas, selects, and contenteditable regions do not move the Tour; Meta/Ctrl/Alt + Arrow remains native.
+- [ ] Rapid button/keyboard attempts create only one Tour preference transition, and controls recover after a simulated save failure.
 - [ ] Production Pages workflow is green at merged `main`.
 
 ## L. Git
@@ -175,6 +182,7 @@ Live local browser screenshots were not available: the Work sandbox rejected loc
   - `7a1e01f873a9b0afd192090cee62d8f0453d74d6` — Separate Trade check-ins from Journal
   - `706cd08dbe340cdc68471c0da3599dcd53bdeddc` — Build versioned product tour foundation
   - `a742e5c8ab19a65ec23aebf88c3fce88a2b060b7` — Add adaptive cross-route tour targets
+  - `d77072e81de9b6889b3171ad772bb25ee4cfe236` — Harden product tour keyboard transitions
 - Pre-Phase-9 repair now merged through PR #23:
   - `25e5203a49b6b9a070038724f638f96a5ac8ce47` — Stabilize Overview catalyst test clock
 - User-owned untracked historical relay files were not staged or changed.
@@ -184,7 +192,7 @@ Live local browser screenshots were not available: the Work sandbox rejected loc
 
 - Live browser QA and screenshots could not be produced inside this Work sandbox because local HTTP listeners and local-file browser navigation are blocked. Production acceptance is therefore explicitly pending.
 - The production Pages workflow runs only from `main`; it cannot prove the final deployed tour until the user merges PR #24.
-- Vite retains its existing advisory for a JavaScript chunk above 500 kB (about 750 kB minified / 203 kB gzip). Phase 9 does not materially change that architecture and does not expand scope into code splitting.
+- Vite retains its existing advisory for a JavaScript chunk above 500 kB (about 751 kB minified / 204 kB gzip). Phase 9 does not materially change that architecture and does not expand scope into code splitting.
 
 No implementation, database, authentication, privacy, or CI blocker remains.
 
