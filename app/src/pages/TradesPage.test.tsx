@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { demoWorkspace } from '../data/demo';
 import { TradesPage } from './TradesPage';
+import { tradeCardFacts } from '../lib/card-presentation';
 import { TradeExitEditor } from '../components/editors/TradeLifecycleEditors';
 import type { Position } from '../types/domain';
 
@@ -63,5 +64,15 @@ describe('Trade workflow presentation', () => {
     expect(html).toContain('Synthetic Trade monitoring update.');
     expect(html).toContain('Wait for confirmation.');
     expect(html).toContain('Add Check-In');
+  });
+
+  it('summarizes thesis health, expiration, and the next linked catalyst at a glance', () => {
+    const withCheckin: Position = { ...activeTrade, checkins: [{ id: 'checkin', tradeId: activeTrade.id, ideaId: activeTrade.ideaId, thesisHealth: 'weaker', checkedAt: '2026-08-14T14:00:00Z', whatChanged: 'Synthetic update.', priceChanged: true, catalystChanged: false, volatilityChanged: false, macroChanged: false, plannedExitState: 'reassess', invalidationOccurred: false, managementView: 'Wait.', data: {} }] };
+    const facts = tradeCardFacts(withCheckin, demoWorkspace, new Date('2026-08-13T12:00:00Z'));
+    expect(facts).toEqual({ thesis: 'Weaker', catalyst: 'Employment release · 2026-08-14', expiration: '2026-09-18' });
+    const html = renderToStaticMarkup(<TradesPage workspace={{ ...demoWorkspace, positions: [withCheckin] }} onSaved={() => undefined} onDebrief={() => undefined} />);
+    expect(html).toContain('Thesis health');
+    expect(html).toContain('Next catalyst');
+    expect(html).toContain('Expires 2026-09-18');
   });
 });

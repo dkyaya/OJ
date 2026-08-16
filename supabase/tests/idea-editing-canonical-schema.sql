@@ -22,6 +22,9 @@ select set_config('request.jwt.claim.sub','71111111-1111-4111-8111-111111111111'
 do $test$
 declare c integer; trade_count integer;
 begin
+  if position('old.deleted_at' in lower(pg_get_functiondef('private.reject_revision_only_update()'::regprocedure))) > 0 then
+    raise exception 'shared revision trigger reads a Trade-Idea-only field directly';
+  end if;
   select count(*) into c from public.trade_ideas;
   if c <> 1 then raise exception 'user A could see % Idea rows', c; end if;
 

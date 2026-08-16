@@ -21,12 +21,35 @@ insert into public.trade_ideas(id,user_id,ticker,strategy,bias,data,deleted_at) 
 insert into public.trade_candidates(id,trade_idea_id,user_id,name,data)
 values ('3ccccccc-cccc-4ccc-8ccc-ccccccccccc1','3aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','31111111-1111-4111-8111-111111111111','Balanced','{"long_strike":100,"short_strike":97}');
 
-insert into public.catalysts(id,trade_idea_id,user_id,event,event_type,data)
-values ('3eeeeeee-eeee-4eee-8eee-eeeeeeeeeee1','3aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','31111111-1111-4111-8111-111111111111','Shared test catalyst','Other','{}');
-insert into public.catalyst_security_mappings(id,user_id,catalyst_id,trade_idea_id,ticker,exposure_type)
-values ('3fffffff-ffff-4fff-8fff-fffffffffff1','31111111-1111-4111-8111-111111111111','3eeeeeee-eeee-4eee-8eee-eeeeeeeeeee1','3aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','ARCHIVE','direct');
-insert into public.research_annotations(id,trade_idea_id,user_id,classification,summary)
-values ('30000000-0000-4000-8000-000000000001','3aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','31111111-1111-4111-8111-111111111111','thesis','Delete with parent');
+insert into public.catalysts(id,trade_idea_id,user_id,event,event_type,data,created_by,updated_by,visibility)
+values ('3eeeeeee-eeee-4eee-8eee-eeeeeeeeeee1','3aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','31111111-1111-4111-8111-111111111111','Shared test catalyst','Other','{}','31111111-1111-4111-8111-111111111111','31111111-1111-4111-8111-111111111111','private');
+insert into public.catalyst_security_mappings(
+  id,user_id,catalyst_id,trade_idea_id,ticker,exposure_type,created_by,updated_by,visibility
+)
+values (
+  '3fffffff-ffff-4fff-8fff-fffffffffff1',
+  '31111111-1111-4111-8111-111111111111',
+  '3eeeeeee-eeee-4eee-8eee-eeeeeeeeeee1',
+  '3aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+  'ARCHIVE',
+  'direct',
+  '31111111-1111-4111-8111-111111111111',
+  '31111111-1111-4111-8111-111111111111',
+  'private'
+);
+insert into public.research_annotations(
+  id,trade_idea_id,user_id,classification,summary,created_by,updated_by,visibility
+)
+values (
+  '30000000-0000-4000-8000-000000000001',
+  '3aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+  '31111111-1111-4111-8111-111111111111',
+  'thesis',
+  'Delete with parent',
+  '31111111-1111-4111-8111-111111111111',
+  '31111111-1111-4111-8111-111111111111',
+  'private'
+);
 
 insert into public.trades(id,user_id,trade_idea_id,ticker,strategy,status,contracts,max_risk,opened_at,closed_at,confirmed_actual) values
   ('3ddddddd-dddd-4ddd-8ddd-ddddddddddd3','31111111-1111-4111-8111-111111111111','3aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3','ACTIVE','bear-put-spread','active',1,100,now(),null,true),

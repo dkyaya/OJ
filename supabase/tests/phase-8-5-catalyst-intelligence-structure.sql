@@ -3,22 +3,22 @@ begin;
 
 do $test$
 declare
-  column_name text;
+  expected_column text;
 begin
   if to_regclass('public.catalyst_provider_cache') is null then
     raise exception 'provider cache missing';
   end if;
 
-  foreach column_name in array array[
+  foreach expected_column in array array[
     'provider', 'source_quality', 'freshness', 'fetched_at', 'source_reference',
     'session_label', 'source_date', 'calendar_days_to_catalyst',
     'catalyst_timezone', 'catalyst_session'
   ] loop
     if not exists (
       select 1 from information_schema.columns
-      where table_schema = 'public' and table_name = 'research_snapshots'
-        and information_schema.columns.column_name = column_name
-    ) then raise exception 'research_snapshots.% missing', column_name; end if;
+      where information_schema.columns.table_schema = 'public' and information_schema.columns.table_name = 'research_snapshots'
+        and information_schema.columns.column_name = expected_column
+    ) then raise exception 'research_snapshots.% missing', expected_column; end if;
   end loop;
 
   if (select relrowsecurity from pg_class where oid = 'public.catalyst_provider_cache'::regclass) is distinct from true then

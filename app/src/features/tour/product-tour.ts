@@ -63,7 +63,7 @@ export const productTourSteps: ProductTourStep[] = [
   },
   {
     id: 'finish', route: '/settings', target: 'tour-guidance', eyebrow: 'You are ready', title: 'Return whenever you need a refresher',
-    body: 'The full workflow is now yours to explore. Replay or resume this tour from Guidance in Settings at any time.',
+    body: 'The full workflow is now yours to explore. Replay or resume this tour from Product Tour in Settings at any time.',
   },
 ];
 
@@ -101,5 +101,7 @@ export function productTourPreferenceData(data: Record<string, unknown> | undefi
 }
 
 export function productTourActionLabel(state: ProductTourState) {
-  return state.status === 'in_progress' ? 'Resume Quick Tour' : 'Start Quick Tour';
+  if (state.status === 'in_progress') return 'Resume Quick Tour';
+  if (state.status === 'completed') return 'Replay Quick Tour';
+  return 'Start Quick Tour';
 }

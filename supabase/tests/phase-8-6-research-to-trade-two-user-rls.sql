@@ -154,23 +154,23 @@ select public.remove_workspace_member('64000000-0000-0000-0000-000000000001','61
 
 select set_config('request.jwt.claim.sub','61000000-0000-0000-0000-000000000002',true);
 do $$
-declare trade_id uuid := current_setting('oj_test.trade_id')::uuid;
+declare stored_trade_id uuid := current_setting('oj_test.trade_id')::uuid;
 begin
   if (select count(*) from public.catalysts where id='65000000-0000-0000-0000-000000000001')<>0 then raise exception 'removed User B retained future workspace Catalyst access'; end if;
   if not exists (
     select 1 from public.trades trade_record
-    where trade_record.id=trade_id
+    where trade_record.id=stored_trade_id
       and trade_record.user_id='61000000-0000-0000-0000-000000000002'
       and trade_record.originating_catalyst_id='65000000-0000-0000-0000-000000000001'
       and trade_record.entry_context->>'originating_catalyst_id'='65000000-0000-0000-0000-000000000001'
   ) then raise exception 'member removal mutated existing private Trade provenance'; end if;
-  if (select count(*) from public.trade_entries entry_record where entry_record.trade_id=trade_id)<>1 then raise exception 'member removal corrupted fill history'; end if;
-  if (select count(*) from public.trade_checkins checkin_record where checkin_record.trade_id=trade_id)<>1 then raise exception 'member removal corrupted check-in history'; end if;
-  if (select count(*) from public.journal_reviews review_record where review_record.trade_id=trade_id)<>1 then raise exception 'member removal corrupted debrief history'; end if;
+  if (select count(*) from public.trade_entries entry_record where entry_record.trade_id=stored_trade_id)<>1 then raise exception 'member removal corrupted fill history'; end if;
+  if (select count(*) from public.trade_checkins checkin_record where checkin_record.trade_id=stored_trade_id)<>1 then raise exception 'member removal corrupted check-in history'; end if;
+  if (select count(*) from public.journal_reviews review_record where review_record.trade_id=stored_trade_id)<>1 then raise exception 'member removal corrupted debrief history'; end if;
   if (select private.can_access_catalyst('65000000-0000-0000-0000-000000000001')) then raise exception 'removed User B retained Catalyst authorization'; end if;
-  perform public.record_trade_exit(trade_id,'2026-08-15T14:00:00Z',2.49,'credit',0.50,'target_reached','intact','before catalyst','Synthetic exit.',true);
-  if (select trade_record.status from public.trades trade_record where trade_record.id=trade_id)<>'closed' then raise exception 'Trade did not close after membership removal'; end if;
-  if (select exit_record.realized_pnl from public.trade_exits exit_record where exit_record.trade_id=trade_id)<>50.00 then raise exception 'realized P/L is incorrect'; end if;
+  perform public.record_trade_exit(stored_trade_id,'2026-08-15T14:00:00Z',2.49,'credit',0.50,'target_reached','intact','before catalyst','Synthetic exit.',true);
+  if (select trade_record.status from public.trades trade_record where trade_record.id=stored_trade_id)<>'closed' then raise exception 'Trade did not close after membership removal'; end if;
+  if (select exit_record.realized_pnl from public.trade_exits exit_record where exit_record.trade_id=stored_trade_id)<>50.00 then raise exception 'realized P/L is incorrect'; end if;
   if (select count(*) from public.trades trade_record where trade_record.status='active')<>0 then raise exception 'closed Trade still contributes to open risk'; end if;
 end $$;
 

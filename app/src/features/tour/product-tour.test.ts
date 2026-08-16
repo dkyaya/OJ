@@ -17,7 +17,10 @@ describe('product tour state', () => {
   it('creates deterministic skipped and completed states', () => {
     const now = new Date('2026-08-15T12:00:00Z');
     expect(createProductTourState('skipped', 2, now)).toEqual({ version: PRODUCT_TOUR_VERSION, status: 'skipped', step: 2, updatedAt: now.toISOString() });
-    expect(createProductTourState('completed', 20, now).step).toBe(productTourSteps.length - 1);
+    const completed = createProductTourState('completed', 20, now);
+    expect(completed.step).toBe(productTourSteps.length - 1);
+    expect(productTourActionLabel(completed)).toBe('Replay Quick Tour');
+    expect(productTourActionLabel(createProductTourState('not_started', 0, now))).toBe('Start Quick Tour');
   });
 
   it('uses stable semantic targets and programmatic routes for every step', () => {
@@ -26,6 +29,7 @@ describe('product tour state', () => {
     expect(productTourSteps.every((step) => step.target && step.route.startsWith('/'))).toBe(true);
     expect(productTourSteps.find((step) => step.id === 'record-trade')?.body).toContain('outside OJ');
     expect(productTourSteps.find((step) => step.id === 'monitoring')?.body).toContain('do not appear as Journal entries');
+    expect(productTourSteps.at(-1)?.body).toContain('Product Tour in Settings');
   });
 
   it('does not depend on any customizable mobile shortcut set', () => {

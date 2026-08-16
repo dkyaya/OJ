@@ -26,4 +26,9 @@ describe('responsive application navigation', () => {
     expect(markup).toContain('Current section: Workspace');
     expect(markup).toContain('<span>Workspace</span>');
   });
+
+  it('applies the saved compact-card preference to the application shell', () => {
+    const markup = renderToStaticMarkup(<AppShell current="/" dark={false} compactCards onTheme={() => undefined} onBuildIdea={() => undefined} onRefresh={() => undefined}><div>Screen</div></AppShell>);
+    expect(markup).toContain('data-card-density="compact"');
+  });
 });

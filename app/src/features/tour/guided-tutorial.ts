@@ -55,5 +55,7 @@ export function guidedTutorialPreferenceData(data: Record<string, unknown> | und
 }
 
 export function guidedTutorialActionLabel(state: GuidedTutorialState) {
-  return state.status === 'paused' || state.status === 'in_progress' ? 'Resume Guided Walkthrough' : 'Start Guided Walkthrough';
+  if (state.status === 'paused' || state.status === 'in_progress') return 'Resume Guided Walkthrough';
+  if (state.status === 'completed') return 'Replay Guided Walkthrough';
+  return 'Start Guided Walkthrough';
 }
