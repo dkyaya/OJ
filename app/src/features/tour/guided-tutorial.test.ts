@@ -13,4 +13,9 @@ describe('Guided Walkthrough preference state', () => {
     expect(readGuidedTutorialState({ guidedWalkthrough: { version: 1, status: 'in_progress', stage: 999 } }).stage).toBe(guidedTutorialSteps.length - 1);
     expect(readGuidedTutorialState({ guidedWalkthrough: { version: 0, status: 'completed', stage: 8 } })).toMatchObject({ status: 'not_started', stage: 0 });
   });
+
+  it('uses one clear action for a completed walkthrough', () => {
+    expect(guidedTutorialActionLabel(createGuidedTutorialState('completed', guidedTutorialSteps.length - 1))).toBe('Replay Guided Walkthrough');
+    expect(guidedTutorialActionLabel(createGuidedTutorialState('not_started', 0))).toBe('Start Guided Walkthrough');
+  });
 });

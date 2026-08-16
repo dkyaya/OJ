@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { AuthScreen } from './components/AuthScreen';
 import { LoadingScreen } from './components/LoadingScreen';
 import { ProductTour, ProductTourInvitation } from './components/ProductTour';
-import { GuidedWalkthrough } from './components/GuidedWalkthrough';
 import { AppShell } from './components/layout/AppShell';
-import { Workflow } from './components/Workflow';
 import { navigate, normalizePath, routeMotionDirection, type AppPath, type RouteMotionDirection } from './config/navigation';
 import { loadWorkspace, emptyWorkspace, savePreferences } from './data/workspace';
 import { createProductTourState, productTourPreferenceData, productTourSteps, readProductTourState, type ProductTourState, type ProductTourStatus } from './features/tour/product-tour';
@@ -13,16 +11,23 @@ import { createGuidedTutorialState, guidedTutorialPreferenceData, guidedTutorial
 import { authModeFromUrl, type AuthMode } from './lib/auth';
 import { remainingSplashTime } from './lib/loading';
 import { supabase } from './lib/supabase';
-import { CatalystsPage } from './pages/CatalystsPage';
-import { IdeasPage } from './pages/IdeasPage';
-import { InsightsPage } from './pages/InsightsPage';
-import { JournalPage } from './pages/JournalPage';
-import { OverviewPage } from './pages/OverviewPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { TradesPage } from './pages/TradesPage';
-import { WorkspacePage } from './pages/WorkspacePage';
 import { clearOwnerDrafts } from './storage/drafts';
 import type { Workspace } from './types/domain';
+
+const GuidedWalkthrough = lazy(() => import('./components/GuidedWalkthrough').then((module) => ({ default: module.GuidedWalkthrough })));
+const Workflow = lazy(() => import('./components/Workflow').then((module) => ({ default: module.Workflow })));
+const CatalystsPage = lazy(() => import('./pages/CatalystsPage').then((module) => ({ default: module.CatalystsPage })));
+const IdeasPage = lazy(() => import('./pages/IdeasPage').then((module) => ({ default: module.IdeasPage })));
+const InsightsPage = lazy(() => import('./pages/InsightsPage').then((module) => ({ default: module.InsightsPage })));
+const JournalPage = lazy(() => import('./pages/JournalPage').then((module) => ({ default: module.JournalPage })));
+const OverviewPage = lazy(() => import('./pages/OverviewPage').then((module) => ({ default: module.OverviewPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })));
+const TradesPage = lazy(() => import('./pages/TradesPage').then((module) => ({ default: module.TradesPage })));
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage').then((module) => ({ default: module.WorkspacePage })));
+
+function RouteLoading() {
+  return <div className="page route-loading" role="status" aria-live="polite"><span className="route-loading-mark" aria-hidden="true" /><div><b>Loading section</b><span>OJ is preparing this workspace view.</span></div></div>;
+}
 
 function routeFromHash() { const resolved = normalizePath(); if (resolved.legacy) history.replaceState(null, '', `#${resolved.path}`); return resolved.path; }
 
@@ -131,9 +136,9 @@ export default function App() {
             : route === '/insights' ? <InsightsPage workspace={workspace} />
               : route === '/workspace' ? <WorkspacePage workspace={workspace} />
                 : <SettingsPage workspace={workspace} onSaved={refresh} tourState={tourState} guidedState={guidedState} onStartTour={(step) => void startTour(step)} onStartGuided={(restart) => void startGuided(restart)} />;
-  const guidedPage = <GuidedWalkthrough open={guidedActive} state={guidedState} sessionKey={guidedSessionKey} onStage={(stage) => transitionGuided('in_progress', stage)} onPause={async () => { await transitionGuided('paused', guidedState.stage); setGuidedActive(false); }} onFinish={async () => { await transitionGuided('completed', guidedTutorialSteps.length - 1); setGuidedActive(false); setGuidedSessionKey((current) => current + 1); }} onExit={async () => { await transitionGuided('skipped', guidedState.stage); setGuidedActive(false); setGuidedSessionKey((current) => current + 1); }} onRestart={async () => { await transitionGuided('in_progress', 0); setGuidedSessionKey((current) => current + 1); }} />;
+  const guidedPage = guidedActive ? <GuidedWalkthrough open state={guidedState} sessionKey={guidedSessionKey} onStage={(stage) => transitionGuided('in_progress', stage)} onPause={async () => { await transitionGuided('paused', guidedState.stage); setGuidedActive(false); }} onFinish={async () => { await transitionGuided('completed', guidedTutorialSteps.length - 1); setGuidedActive(false); setGuidedSessionKey((current) => current + 1); }} onExit={async () => { await transitionGuided('skipped', guidedState.stage); setGuidedActive(false); setGuidedSessionKey((current) => current + 1); }} onRestart={async () => { await transitionGuided('in_progress', 0); setGuidedSessionKey((current) => current + 1); }} /> : null;
   const profile = workspace.profile;
-  return <><AppShell current={route} dark={dark} mobileNavigation={workspace.preferences?.mobileNavigation} userId={profile?.id} email={profile?.email} onRefresh={refresh} onTheme={() => setDark(!dark)} onBuildIdea={() => profile && setWorkflow('ticker')}><div className="route-stage" data-motion={routeMotion} key={guidedActive ? 'guided-walkthrough' : route}>{error && <div className="app-error" role="alert">{error}</div>}{workspace.demo && <div className="demo-banner">Synthetic preview data</div>}{guidedActive ? guidedPage : page}</div></AppShell>{profile && !guidedActive && <Workflow open={workflow !== null} onClose={() => setWorkflow(null)} ownerId={profile.id} initialMode={workflow || 'ticker'} catalysts={workspace.catalysts.map((item) => ({ id: item.id, event: item.event, date: item.date }))} maximumRisk={workspace.policy?.maximumOpenRisk} openRisk={openRisk} />}
+  return <><AppShell current={route} dark={dark} compactCards={workspace.preferences?.compactCards} mobileNavigation={workspace.preferences?.mobileNavigation} userId={profile?.id} email={profile?.email} onRefresh={refresh} onTheme={() => setDark(!dark)} onBuildIdea={() => profile && setWorkflow('ticker')}><div className="route-stage" data-motion={routeMotion} key={guidedActive ? 'guided-walkthrough' : route}>{error && <div className="app-error" role="alert">{error}</div>}{workspace.demo && <div className="demo-banner">Synthetic preview data</div>}<Suspense fallback={<RouteLoading />}>{guidedActive ? guidedPage : page}</Suspense></div></AppShell>{profile && !guidedActive && workflow !== null && <Suspense fallback={null}><Workflow open onClose={() => setWorkflow(null)} ownerId={profile.id} initialMode={workflow} catalysts={workspace.catalysts.map((item) => ({ id: item.id, event: item.event, date: item.date }))} maximumRisk={workspace.policy?.maximumOpenRisk} openRisk={openRisk} /></Suspense>}
     {!workspace.demo && tourState.status === 'not_started' && guidedState.status === 'not_started' && !tourActive && !guidedActive && <ProductTourInvitation busy={tourBusy} onQuick={() => startTour(0)} onGuided={() => startGuided(true)} onSkip={skipOnboarding} />}
     {tourActive && <ProductTour state={tourState} catalystId={workspace.catalysts[0]?.id} onStep={(step) => transitionTour('in_progress', step)} onPause={async () => { await transitionTour('in_progress', tourState.step); setTourActive(false); }} onFinish={async () => { await transitionTour('completed', productTourSteps.length - 1); setTourActive(false); }} />}
   </>;

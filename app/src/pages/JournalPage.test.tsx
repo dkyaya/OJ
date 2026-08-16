@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { demoWorkspace } from '../data/demo';
 import type { Position } from '../types/domain';
 import { JournalPage } from './JournalPage';
+import { journalSummaryPreview } from '../lib/card-presentation';
 
 const closedTrade: Position = {
   id: 'closed-synthetic', ideaId: demoWorkspace.ideas[0].id, ticker: 'DEMO', strategy: 'Bear Put Spread', status: 'closed', contracts: 1,
@@ -45,6 +46,17 @@ describe('Trade debrief continuity', () => {
     const html = renderToStaticMarkup(<JournalPage workspace={reviewWorkspace} onSaved={() => undefined} />);
     expect(html).toContain('Trade Debrief');
     expect(html).toContain('A deliberate process review.');
-    expect(html).toContain('Linked Trade Story');
+    expect(html).toContain('Debrief &amp; Linked Trade Story');
+  });
+
+  it('keeps long reflection text intact behind a concise journal preview', () => {
+    const long = 'A deliberate process review with enough detail to explain the setup, execution, monitoring changes, exit decision, and lesson. '.repeat(3).trim();
+    expect(journalSummaryPreview(long).length).toBeLessThanOrEqual(150);
+    expect(journalSummaryPreview(long)).toMatch(/…$/);
+    const reviewWorkspace = { ...demoWorkspace, journal: [{ id: 'review-long', ideaId: demoWorkspace.ideas[0].id, kind: 'review' as const, createdAt: '2026-08-14T15:00:00Z', summary: long, data: {} }] };
+    const html = renderToStaticMarkup(<JournalPage workspace={reviewWorkspace} onSaved={() => undefined} />);
+    expect(html).toContain('journal-summary-card');
+    expect(html).toContain('Debrief Reflection');
+    expect(html).toContain(long);
   });
 });

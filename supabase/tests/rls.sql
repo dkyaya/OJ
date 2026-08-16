@@ -11,6 +11,7 @@ declare
   deletion_is_definer boolean;
   deletion_config text[];
   deletion_policies text[];
+  browser_delete_policies text[];
 begin
   if to_regclass('public.trade_ideas') is null then raise exception 'trade_ideas missing'; end if;
   if not exists (
@@ -31,7 +32,12 @@ begin
 
   if not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.proname='is_approved_user' and n.nspname='private') then raise exception 'private allowlist helper missing'; end if;
   if has_function_privilege('anon','private.is_approved_user()','execute') then raise exception 'anon can execute allowlist helper'; end if;
-  if exists (select 1 from pg_policies where schemaname='public' and policyname like '%_delete') then raise exception 'browser delete policy exists'; end if;
+  select array_agg(tablename || '.' || policyname order by tablename, policyname) into browser_delete_policies
+  from pg_policies where schemaname='public' and cmd='DELETE';
+  if browser_delete_policies is distinct from array[
+    'research_sources.research_sources_owner_delete',
+    'trade_idea_catalysts.trade_idea_catalysts_owner_delete'
+  ]::text[] then raise exception 'browser delete policy set changed'; end if;
   if not exists (select 1 from pg_trigger where tgname='guard_profile_privileges' and tgrelid='public.profiles'::regclass) then raise exception 'profile privilege guard missing'; end if;
   if not exists (select 1 from pg_trigger where tgname='guard_browser_draft_state' and tgrelid='public.trade_ideas'::regclass) then raise exception 'browser draft-state guard missing'; end if;
   if not exists (select 1 from pg_trigger where tgname='guard_trade_idea_archive' and tgrelid='public.trade_ideas'::regclass) then raise exception 'trade-backed archive guard missing'; end if;
