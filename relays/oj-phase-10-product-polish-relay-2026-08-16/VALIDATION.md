@@ -26,6 +26,7 @@ Results on 2026-08-16:
 - Privacy check: passed.
 - Audit: zero vulnerabilities.
 - PWA: manifest start URL remains relative; service worker remains registered from the build base.
+- Draft PR #26 CI run `31953256653`: Public Validate, Test, Build, and Security all passed.
 
 Repository:
 

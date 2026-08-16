@@ -174,9 +174,10 @@ The new migration must be deployed through the established Supabase workflow aft
 - Current head at package generation: `c2c2b2c`
 - Draft PR target: `dkyaya/OJ:main`
 - Draft PR title: `Polish OJ for daily and shared use`
-- PR URL and final branch head: recorded in the root task handoff after publication.
+- Draft PR: `#26`, https://github.com/dkyaya/OJ/pull/26
+- Published branch head before this CI record: `3244e01`
 - Local validation: green.
-- Remote CI: must be green before readiness is changed from draft.
+- Remote CI run `31953256653`: OJ Public Validate, Test, Build, and Security all passed.
 - Merge: not performed; the owner remains final merge authority.
 
 ## P. Blockers / uncertainties
