@@ -8,6 +8,7 @@ import { CatalystSourceLink } from './CatalystSourceLink';
 import { forecastWindow } from '../lib/forecast-window';
 import { ResearchLedger } from './ResearchLedger';
 import { CatalystIntelligence } from './CatalystIntelligence';
+import { productionCatalystIntelligenceActions } from '../data/catalyst-intelligence-actions';
 
 type Section = 'summary' | 'intelligence' | 'evidence' | 'mission' | 'forecasts' | 'debrief';
 const evidenceLabels: Record<EvidenceType, string> = { supports_bull: 'Supports Bull Case', supports_bear: 'Supports Bear Case', neutral: 'Neutral', needs_verification: 'Needs Verification' };
@@ -82,7 +83,7 @@ export function CatalystWarRoom({ catalyst, workspace, onBack, onSaved }: { cata
       <ResearchLedger workspace={workspace} catalystId={catalyst.id} onSaved={onSaved} />
       <section className="card privacy-split"><div><h2>Shared Research</h2><p>Event facts, evidence, sources, market mappings, questions, and factual debriefs.</p></div><div><h2>My Private Work</h2><p>Bias, forecasts until shared, Ideas, strikes, sizing, trades, account risk, and Journal.</p></div></section>
     </div>}
-    {section === 'intelligence' && <CatalystIntelligence catalyst={catalyst} workspace={workspace} onSaved={onSaved} setMessage={setMessage} />}
+    {section === 'intelligence' && <CatalystIntelligence catalyst={catalyst} workspace={workspace} actions={productionCatalystIntelligenceActions} onSaved={onSaved} setMessage={setMessage} />}
     {section === 'evidence' && <EvidenceSection catalyst={catalyst} workspace={workspace} onSaved={onSaved} setMessage={setMessage} />}
     {section === 'mission' && <MissionSection catalyst={catalyst} workspace={workspace} onSaved={onSaved} setMessage={setMessage} />}
     {section === 'forecasts' && <ForecastSection catalyst={catalyst} workspace={workspace} onSaved={onSaved} setMessage={setMessage} />}

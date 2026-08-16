@@ -14,11 +14,14 @@ describe('settings mobile navigation preferences', () => {
     expect(markup).toContain('4 + More');
   });
 
-  it('offers versioned tour guidance and replay without using a primary navigation slot', () => {
+  it('offers both versioned onboarding modes without using a primary navigation slot', () => {
     const markup = renderToStaticMarkup(<SettingsPage workspace={demoWorkspace} onSaved={() => undefined} />);
     expect(markup).toContain('data-tour-id="tour-guidance"');
-    expect(markup).toContain('Guidance');
-    expect(markup).toContain('Take Product Tour');
-    expect(markup).toContain('fetching provider data');
+    expect(markup).toContain('Product Tour');
+    expect(markup).toContain('Quick Tour');
+    expect(markup).toContain('Start Quick Tour');
+    expect(markup).toContain('Guided Walkthrough');
+    expect(markup).toContain('Start Guided Walkthrough');
+    expect(markup).toContain('disposable synthetic example');
   });
 });

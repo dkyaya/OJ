@@ -10,7 +10,7 @@ describe('product tour state', () => {
   it('clamps resumable progress and preserves unrelated preference JSON', () => {
     const progress = readProductTourState({ productTour: { version: PRODUCT_TOUR_VERSION, status: 'in_progress', step: 999 } });
     expect(progress.step).toBe(productTourSteps.length - 1);
-    expect(productTourActionLabel(progress)).toBe('Resume Product Tour');
+    expect(productTourActionLabel(progress)).toBe('Resume Quick Tour');
     expect(productTourPreferenceData({ mobileNavigation: ['/'] }, progress)).toEqual({ mobileNavigation: ['/'], productTour: progress });
   });
 

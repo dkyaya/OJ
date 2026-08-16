@@ -1,59 +1,61 @@
 # Product Tour
 
-OJ’s versioned product tour introduces the catalyst-first workflow without creating or changing a domain record. It is an orientation layer, not a sample-data generator. Moving through the tour changes routes and saves only tour progress in the signed-in user’s existing application preferences. It does not call a market-data provider, consume an API credit, create a Catalyst or Idea, or touch a brokerage.
+OJ offers two separate onboarding experiences:
 
-## First use and persistence
+- **Quick Tour** explains how OJ is organized in about two minutes. It remains the read-only, route-aware Phase 9 tour.
+- **Guided Walkthrough** lets a user practice the Catalyst-to-Insights workflow in about five to seven minutes with a clearly labeled synthetic company, `OJ Tutorial Co. (OJDEMO)`.
 
-`PRODUCT_TOUR_VERSION` is currently `1`. The canonical state lives at `application_preferences.data.productTour`:
+Both leave canonical OJ records untouched. Neither places an order, connects to a broker, or requests market or government-provider data.
+
+## First use and preferences
+
+First use offers **Quick Tour**, **Guided Walkthrough**, and **Skip for Now**. The two modes remain separate: the Quick Tour is conceptual and freely navigable; the Guided Walkthrough is hands-on and gates its key steps until the tutorial action is complete.
+
+Only small, versioned onboarding state is stored in `application_preferences.data`:
 
 ```json
 {
-  "version": 1,
-  "status": "in_progress",
-  "step": 4,
-  "updatedAt": "2026-08-15T12:00:00.000Z"
+  "productTour": { "version": 1, "status": "completed", "step": 10 },
+  "guidedWalkthrough": { "version": 1, "status": "paused", "stage": 4 }
 }
 ```
 
-Valid statuses are `not_started`, `in_progress`, `skipped`, and `completed`. An absent or older-version state is treated as new, allowing a materially revised tour to be offered deliberately in a later release. First use asks for consent with **Take a Tour** and **Skip for Now**. Skip and completion persist across devices. An in-progress tour can be paused and resumed from **Settings → Guidance**; skipped and completed tours can be replayed there.
+Timestamps may also be present. Theme, calendar view, compact-card choice, mobile navigation, and unrelated preference JSON are preserved. No Catalyst, Idea, option chain, Trade, note, account value, or arbitrary tutorial input is stored in preferences. No schema migration is required.
 
-No schema migration is required. Preference saves preserve theme, calendar view, compact-card choice, mobile navigation, and unrelated preference JSON. Optimistic preference revisions continue to detect competing device changes.
+Settings exposes both modes under **Product Tour**. A user can start or replay the Quick Tour, start or resume the Guided Walkthrough, or restart the Guided Walkthrough with a clean tutorial session.
 
-## Steps
+## Isolated Tutorial Workspace
 
-The 11 steps cover:
+The Guided Walkthrough uses an in-memory `TutorialWorkspace`, not the authenticated production `Workspace` and not demo mode. Demo mode is a synthetic preview of the whole application; the Guided Walkthrough is a temporary learning session within an authenticated account.
 
-1. Overview and the complete catalyst-first lifecycle.
-2. OJ risk policy versus brokerage buying power.
-3. Catalyst calendar and shared factual research.
-4. War Room and Catalyst Intelligence without provider activity.
-5. Private Ideas under “Shared facts, separate conclusions.”
-6. Planned Candidates versus actual execution.
-7. Manual Record Trade after external execution.
-8. Trade monitoring and Check-Ins.
-9. Journal debriefs and personal reflection.
-10. Insights and small-sample caution.
-11. Settings Guidance, replay, and completion.
+The Tutorial Workspace contains lightweight tutorial analogues for Catalyst, Intelligence observation, Idea, Candidate, Trade, Check-In, Exit, and Debrief. Its fixture and orchestration modules have an explicit import boundary from Supabase, production write actions, collaboration actions, and research providers. The UI reuses production payoff, P/L, option-chain, expected-move, and scenario utilities, plus the production option-chain presentation.
 
-The controller navigates directly by route; it never assumes a mobile shortcut position or requires a destination to be visible outside **More**. Every anchor uses a stable semantic `data-tour-id`. Target lookup retries for a bounded interval after cross-route rendering. If an account has no Catalyst, Candidate, Trade, or other example, the step becomes a centered explanatory callout instead of failing or fabricating data.
+The bundled fixture has six call/put contracts across the 95, 100, and 105 strikes. It is labeled **Tutorial Fixture / Synthetic / Tutorial session**. Opening Catalyst Intelligence produces no MarketData, BLS, BEA, FRED, Census, Treasury, SEC, cache, or Research Ledger write.
 
-## Responsive and accessible behavior
+## Guided story and lifecycle
 
-Desktop uses an anchored popover and highlighted region. Narrow viewports use a bottom sheet so the explanation stays readable above safe-area insets. Target bounds are remeasured on scroll and resize. Reduced-motion preferences disable tour animation and smooth scrolling.
+The walkthrough teaches:
 
-The first-use dialog moves focus into its choices, traps Tab within the modal, restores prior focus, and treats Escape as **Skip for Now**. The active tour is non-modal: its Back, Next, Pause, and Finish controls are keyboard reachable; Left/Right arrows move between steps; Escape pauses; route content remains available. Arrow navigation leaves native caret, selection, and chooser behavior intact when the event begins in an input, textarea, select, contenteditable region, or equivalent text-entry role. Meta, Ctrl, and Alt arrow shortcuts are also left to the browser and operating system.
+1. Create the synthetic `OJ Tutorial Co. Q2 Earnings` Catalyst.
+2. Review Catalyst Intelligence, expected move, Scenario Lab, and Research Ledger provenance.
+3. Save a bullish Tutorial Idea linked to the factual Catalyst.
+4. Save a 100/105 bull call Candidate at a planned $1.40 debit.
+5. Manually record the simulated $1.32 fill after external execution.
+6. Add a **Thesis Intact** Check-In.
+7. Record a $2.10 spread exit.
+8. Save a short Debrief.
+9. See how genuine completed history would later contribute to Insights.
 
-All Tour actions share a synchronous transition lock. A preference save must settle before another button or document-level keyboard action can begin, including on the first-use Take/Skip choice. The lock releases after both successful and failed saves so the Tour remains usable. Missing targets are announced in the callout rather than producing an invisible or off-screen control.
+Production payoff utilities derive the planned $140 maximum loss, $360 maximum profit, and $101.40 breakeven; actual execution derives $132, $368, and $101.32. Production P/L utilities derive the $78 gain before fees.
 
-## Product boundary
+Pause saves only the current stage. Reloading or resuming reconstructs deterministic prerequisites and restarts the current section without persisting entered tutorial text. Finish, restart, explicit exit, and sign-out clear tutorial objects from memory. Because those objects never enter canonical state, they cannot affect risk capacity, Journal, Insights, calibration, collaboration, activity, provider cache, or exports.
 
-The tour intentionally reinforces these distinctions:
+## Quick Tour placement and accessibility
 
-- Catalyst facts may be shared; Ideas, sizing, Trades, and Journal reflection stay private.
-- A Candidate is planned research, not an order.
-- A Trade is manually recorded only after execution elsewhere.
-- A Check-In belongs to Trade monitoring and history, not the Journal feed.
-- Journal contains completed Trade debriefs and personal lessons.
-- OJ risk capacity is not brokerage cash, margin, or buying power.
+Quick Tour anchors use semantic `data-tour-id` targets. Pure placement logic treats the highlighted target as a protected rectangle, tests below/above/right/left candidates inside viewport margins, and chooses a non-overlapping placement. When none fits, the card detaches while the target stays visible. Mobile can raise or top-position the card so a highlighted bottom-navigation target is not covered.
 
-Phase 9 does not add contextual guidance, spread-efficiency tooling, a brokerage connection, or collaboration gameplay.
+Target bounds are remeasured after route changes, nested or document scroll, resize, orientation change, and card-size changes. Missing targets receive an explanatory detached card instead of an invisible control.
+
+The first-use invitation is modal and manages focus. Quick Tour and Guided Walkthrough are non-modal. Editable controls retain native arrow-key behavior; Meta, Ctrl, and Alt arrow shortcuts are preserved; Escape pauses; and a synchronous lock serializes buttons and keyboard transitions. Focus moves to the current heading/card. Reduced-motion settings disable optional movement, and actions remain keyboard reachable.
+
+Phase 9.1 does not add contextual guidance, brokerage connections, provider polling, collaboration onboarding, achievements, or automatic trade recommendations.

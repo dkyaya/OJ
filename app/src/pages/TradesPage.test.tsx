@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { demoWorkspace } from '../data/demo';
 import { TradesPage } from './TradesPage';
+import { TradeExitEditor } from '../components/editors/TradeLifecycleEditors';
 import type { Position } from '../types/domain';
 
 const activeTrade: Position = {
@@ -23,10 +24,19 @@ describe('Trade workflow presentation', () => {
   it('opens Record Trade from a qualified Idea with Candidate values prepopulated', () => {
     const html = renderToStaticMarkup(<TradesPage workspace={demoWorkspace} initialIdeaId={demoWorkspace.ideas[0].id} onSaved={() => undefined} onDebrief={() => undefined} />);
     expect(html).toContain('Record Trade');
+    expect(html).toContain('data-shared-ui="record-trade-editor"');
     expect(html).toContain('Actual Expiration');
     expect(html).toContain('value="2026-09-18"');
     expect(html).toContain('Planned Candidate');
     expect(html).toContain('Actual Trade');
+    expect(html).toContain('I confirm this is an actual fill executed outside OJ.');
+    expect(html).toContain('>Record Trade<');
+  });
+
+  it('preserves the production exit attestation and action copy', () => {
+    const html = renderToStaticMarkup(<TradeExitEditor position={activeTrade} onCancel={() => undefined} onSave={() => undefined} />);
+    expect(html).toContain('I confirm this is the actual full closing transaction.');
+    expect(html).toContain('>Record Exit &amp; Debrief<');
   });
 
   it('distinguishes OJ policy capacity from brokerage buying power', () => {
@@ -39,6 +49,7 @@ describe('Trade workflow presentation', () => {
   it('keeps the original plan, actual execution, and entry research together', () => {
     const html = renderToStaticMarkup(<TradesPage workspace={{ ...demoWorkspace, positions: [activeTrade] }} onSaved={() => undefined} onDebrief={() => undefined} />);
     expect(html).toContain('Original synthetic entry thesis.');
+    expect(html).toContain('data-shared-ui="trade-detail-surface"');
     expect(html).toContain('Planned Candidate at Entry');
     expect(html).toContain('Actual Execution');
     expect(html).toContain('Locked Forecast');

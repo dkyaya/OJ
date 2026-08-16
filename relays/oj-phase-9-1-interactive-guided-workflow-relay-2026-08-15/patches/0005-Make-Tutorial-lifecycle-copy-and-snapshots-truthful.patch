@@ -1,0 +1,592 @@
+From d4ebaf11754c49af6f22448cc06c5fde23a864a3 Mon Sep 17 00:00:00 2001
+From: Joachim Johnson <yajor421@gmail.com>
+Date: Sat, 15 Aug 2026 19:36:56 -0400
+Subject: [PATCH] Make Tutorial lifecycle copy and snapshots truthful
+
+---
+ .../CatalystIntelligence.behavior.test.tsx    | 71 +++++++++++++++++++
+ app/src/components/CatalystIntelligence.tsx   | 16 ++++-
+ app/src/components/GuidedWalkthrough.test.tsx | 32 ++++++++-
+ app/src/components/GuidedWalkthrough.tsx      | 39 ++++++++--
+ .../editors/TradeLifecycleEditors.tsx         | 43 ++++++++---
+ app/src/features/tour/tutorial-ui-adapter.ts  |  4 +-
+ .../features/tour/tutorial-workspace.test.ts  | 18 +++++
+ app/src/features/tour/tutorial-workspace.ts   | 16 ++++-
+ app/src/pages/TradesPage.test.tsx             |  9 +++
+ app/tsconfig.tsbuildinfo                      |  2 +-
+ 10 files changed, 224 insertions(+), 26 deletions(-)
+ create mode 100644 app/src/components/CatalystIntelligence.behavior.test.tsx
+
+diff --git a/app/src/components/CatalystIntelligence.behavior.test.tsx b/app/src/components/CatalystIntelligence.behavior.test.tsx
+new file mode 100644
+index 0000000..7ddea6a
+--- /dev/null
++++ b/app/src/components/CatalystIntelligence.behavior.test.tsx
+@@ -0,0 +1,71 @@
++// @vitest-environment jsdom
++
++import { act } from 'react';
++import { createRoot, type Root } from 'react-dom/client';
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { demoWorkspace } from '../data/demo';
++import { createTutorialFixture } from '../features/tour/tutorial-fixtures';
++import { CatalystIntelligence, type CatalystIntelligenceActions } from './CatalystIntelligence';
++
++let root: Root;
++let container: HTMLDivElement;
++
++function button(label: string) {
++  const match = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((item) => item.textContent?.includes(label));
++  if (!match) throw new Error(`Button not found: ${label}`);
++  return match;
++}
++
++beforeEach(() => {
++  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
++  container = document.createElement('div');
++  document.body.append(container);
++  root = createRoot(container);
++});
++
++afterEach(async () => {
++  await act(async () => root.unmount());
++  document.body.replaceChildren();
++  vi.restoreAllMocks();
++});
++
++describe('Catalyst Intelligence production presentation', () => {
++  it('keeps the production manual snapshot action and success copy unchanged', async () => {
++    const saveSnapshot = vi.fn(async () => undefined);
++    const setMessage = vi.fn();
++    const actions: CatalystIntelligenceActions = { saveSnapshot, loadProviderStatus: async () => [], loadDelayedOptions: async () => ({ snapshots: [] }) };
++    await act(async () => root.render(<CatalystIntelligence
++      catalyst={demoWorkspace.catalysts[0]}
++      workspace={demoWorkspace}
++      actions={actions}
++      onSaved={() => undefined}
++      setMessage={setMessage}
++      presentation={{ initialManual: { observedAt: '2026-08-15T12:00', ticker: 'DEMO', underlying: '100', methodology: 'Named production test source.' } }}
++    />));
++
++    await act(async () => { button('Save Snapshot').click(); await Promise.resolve(); });
++    expect(saveSnapshot).toHaveBeenCalledTimes(1);
++    expect(setMessage).toHaveBeenCalledWith('Manual market snapshot appended to the private Research Ledger.');
++  });
++
++  it('keeps the production provider snapshot action and success copy unchanged', async () => {
++    const saveSnapshot = vi.fn(async () => undefined);
++    const setMessage = vi.fn();
++    const actions: CatalystIntelligenceActions = { saveSnapshot, loadProviderStatus: async () => [], loadDelayedOptions: async () => ({ snapshots: [] }) };
++    await act(async () => root.render(<CatalystIntelligence
++      catalyst={demoWorkspace.catalysts[0]}
++      workspace={demoWorkspace}
++      actions={actions}
++      onSaved={() => undefined}
++      setMessage={setMessage}
++      presentation={{
++        initialOptions: createTutorialFixture(new Date('2026-08-15T12:00:00Z')).options,
++        initialManual: { observedAt: '2026-08-15T12:00', ticker: 'DEMO', underlying: '100', expiration: '2026-09-18', methodology: 'Named production test source.' },
++      }}
++    />));
++
++    await act(async () => { button('Save 6 Contracts').click(); await Promise.resolve(); });
++    expect(saveSnapshot).toHaveBeenCalledTimes(1);
++    expect(setMessage).toHaveBeenCalledWith('Provider snapshot appended to the private Research Ledger.');
++  });
++});
+diff --git a/app/src/components/CatalystIntelligence.tsx b/app/src/components/CatalystIntelligence.tsx
+index 09f701a..41acc51 100644
+--- a/app/src/components/CatalystIntelligence.tsx
++++ b/app/src/components/CatalystIntelligence.tsx
+@@ -62,6 +62,14 @@ export type CatalystIntelligencePresentation = {
+   initialRiskFreeRate?: string;
+   providerActionsEnabled?: boolean;
+   reviewAction?: { label: string; onReview: (scenarioPrice?: number) => void | Promise<void> };
++  snapshotPersistence?: {
++    saved: boolean;
++    saveLabel?: string;
++    savedLabel?: string;
++    manualSuccessMessage?: string;
++    providerSuccessMessage?: string;
++    savedNotice?: string;
++  };
+ };
+ 
+ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, setMessage, presentation }: { catalyst: Catalyst; workspace: Workspace; actions: CatalystIntelligenceActions; onSaved: () => void | Promise<void>; setMessage: (message: string) => void; presentation?: CatalystIntelligencePresentation }) {
+@@ -88,6 +96,7 @@ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, se
+     { id: 'bear', label: 'Bear', probability: 25, movePercent: -2, targetIv: 0.2, evaluationDate: scenarioDate },
+   ]);
+   const [scenarioResult, setScenarioResult] = useState<ReturnType<typeof evaluateScenarios>>();
++  const snapshotPersistence = presentation?.snapshotPersistence;
+ 
+   const callMid = midpoint(number(manual.callBid), number(manual.callAsk));
+   const putMid = midpoint(number(manual.putBid), number(manual.putAsk));
+@@ -137,7 +146,7 @@ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, se
+     if (!first) throw new Error('There is no provider snapshot to save.');
+     await actions.saveSnapshot({ catalystId: catalyst.id, tradeIdeaId: selected?.idea.id, ticker: first.ticker, snapshotType: 'market_pricing', observedAt: first.observedAt, methodology: first.methodology, provider: first.provider, sourceQuality: first.sourceQuality, freshness: first.freshness, fetchedAt: first.fetchedAt, sourceReference: first.sourceReference, sourceDate: first.observedAt.slice(0, 10), catalystTimezone: catalyst.timezoneName, catalystSession: catalyst.marketSession, values: { market_snapshot_version: '1.0', option_chain: fetched.snapshots } });
+     await onSaved();
+-  }, 'Provider snapshot appended to the private Research Ledger.');
++  }, snapshotPersistence?.providerSuccessMessage || 'Provider snapshot appended to the private Research Ledger.');
+ 
+   const calculateScenarios = () => {
+     if (!selected?.strategy || !candidateEconomics || selected.candidate.longStrike === undefined || selected.candidate.shortStrike === undefined || selected.candidate.debit === undefined || number(manual.underlying) === undefined || !manual.expiration || percent(riskFreeRate) === undefined) {
+@@ -181,7 +190,8 @@ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, se
+         <label className="wide"><span>Methodology</span><textarea value={manual.methodology} onChange={(event) => setManual({ ...manual, methodology: event.target.value })} /></label>
+         <label className="wide"><span>Notes</span><textarea value={manual.notes} onChange={(event) => setManual({ ...manual, notes: event.target.value })} /></label>
+       </div>
+-      <div className="panel-actions"><button className="primary" disabled={busy} onClick={() => void run(saveManual, 'Manual market snapshot appended to the private Research Ledger.')}><Save size={16} />Save Snapshot</button>{presentation?.reviewAction && <button disabled={busy} onClick={() => void run(async () => presentation.reviewAction!.onReview(number(manual.underlying)), 'Synthetic Intelligence reviewed. No provider request was made.')}>{presentation.reviewAction.label}</button>}</div>
++      <div className="panel-actions"><button className="primary" disabled={busy || snapshotPersistence?.saved} onClick={() => void run(saveManual, snapshotPersistence?.manualSuccessMessage || 'Manual market snapshot appended to the private Research Ledger.')}><Save size={16} />{snapshotPersistence?.saved ? snapshotPersistence.savedLabel || 'Snapshot Saved' : snapshotPersistence?.saveLabel || 'Save Snapshot'}</button>{presentation?.reviewAction && <button disabled={busy} onClick={() => void run(async () => presentation.reviewAction!.onReview(number(manual.underlying)), 'Synthetic Intelligence reviewed. No provider request was made.')}>{presentation.reviewAction.label}</button>}</div>
++      {snapshotPersistence?.saved && snapshotPersistence.savedNotice && <p className="method-note" role="status">{snapshotPersistence.savedNotice}</p>}
+     </details>
+ 
+     <details className="card intelligence-panel" open><summary><span><Calculator size={17} />Candidate Economics &amp; Scenario Lab</span><small>User-controlled assumptions</small></summary>
+@@ -204,7 +214,7 @@ export function CatalystIntelligence({ catalyst, workspace, actions, onSaved, se
+     <details className="card intelligence-panel"><summary><span><CloudDownload size={17} />Providers &amp; Methodology</span><small>Explicit refresh only</small></summary>
+       <div className="provider-grid">{providers.map((provider) => <article key={provider.id}><span className={`quality-dot ${provider.availability}`} /> <b>{provider.label}</b><small>{provider.availability.replaceAll('_', ' ')} · {provider.freshness}</small><p>{provider.detail}</p></article>)}</div>
+       {fetched.snapshots.length > 0 && <div className="provider-chain-preview"><OptionChainSnapshot contracts={fetched.snapshots} cache={fetched.cache} /></div>}
+-      <div className="panel-actions"><button disabled={busy || presentation?.providerActionsEnabled === false} onClick={() => void fetchProviders()}><CloudDownload size={16} />Check Provider Status</button><label className="inline-control"><span>Nearby strikes</span><input type="number" min="1" max="10" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} /></label><button disabled={busy || presentation?.providerActionsEnabled === false || !manual.ticker || !manual.expiration} onClick={() => void fetchOptions()}>Load Delayed Options</button>{fetched.snapshots.length > 0 && <button className="primary" disabled={busy} onClick={() => void saveFetched()}>Save {fetched.snapshots.length} Contracts</button>}</div>
++      <div className="panel-actions"><button disabled={busy || presentation?.providerActionsEnabled === false} onClick={() => void fetchProviders()}><CloudDownload size={16} />Check Provider Status</button><label className="inline-control"><span>Nearby strikes</span><input type="number" min="1" max="10" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} /></label><button disabled={busy || presentation?.providerActionsEnabled === false || !manual.ticker || !manual.expiration} onClick={() => void fetchOptions()}>Load Delayed Options</button>{fetched.snapshots.length > 0 && <button className="primary" disabled={busy || snapshotPersistence?.saved} onClick={() => void saveFetched()}>{snapshotPersistence?.saved ? snapshotPersistence.savedLabel || 'Snapshot Saved' : `Save ${fetched.snapshots.length} Contracts`}</button>}</div>
+       <p className="method-note">No polling. MarketData requests require one ticker, one exact expiration, and at most 10 nearby strikes. BLS and Treasury use public official endpoints. SEC requires a request identity; FRED, BEA, Census, and MarketData use optional server secrets. Missing credentials never disable manual entry.</p>
+     </details>
+   </section>;
+diff --git a/app/src/components/GuidedWalkthrough.test.tsx b/app/src/components/GuidedWalkthrough.test.tsx
+index c603070..c621748 100644
+--- a/app/src/components/GuidedWalkthrough.test.tsx
++++ b/app/src/components/GuidedWalkthrough.test.tsx
+@@ -61,6 +61,13 @@ describe('Guided Walkthrough behavior', () => {
+     expect(container.textContent).toContain('Tutorial Fixture');
+     expect(container.textContent).toContain('Straddle estimate');
+     expect(container.querySelector('[data-shared-ui="catalyst-intelligence"]')).not.toBeNull();
++    expect(container.querySelector('.intelligence-history')).toBeNull();
++    expect(button('Check Provider Status').disabled).toBe(true);
++    expect(button('Load Delayed Options').disabled).toBe(true);
++    await click('Save Snapshot');
++    expect(container.textContent).toContain('Tutorial snapshot saved to this temporary session.');
++    expect(container.textContent).toContain('It did not enter your production Research Ledger');
++    expect(container.querySelector('.intelligence-history')?.textContent).toContain('Tutorial Fixture');
+     await click('Mark Intelligence Reviewed');
+     await click('Next');
+ 
+@@ -77,13 +84,15 @@ describe('Guided Walkthrough behavior', () => {
+     await click('Next');
+ 
+     expect(container.querySelector('[data-shared-ui="record-trade-editor"]')).not.toBeNull();
++    expect(container.textContent).toContain('I understand this is a synthetic fill simulation. OJ did not place an order.');
++    expect(container.textContent).not.toContain('I confirm this is an actual fill executed outside OJ.');
+     const confirmation = container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+     if (!confirmation) throw new Error('Trade boundary confirmation was not rendered.');
+     await act(async () => { confirmation.click(); });
+     expect(container.textContent).toContain('$132.00');
+     expect(container.textContent).toContain('$368.00');
+     expect(container.textContent).toContain('101.32');
+-    await click('Record Trade');
++    await click('Record Tutorial Trade');
+     await click('Next');
+ 
+     expect(container.querySelector('[data-shared-ui="trade-detail-surface"]')).not.toBeNull();
+@@ -93,10 +102,13 @@ describe('Guided Walkthrough behavior', () => {
+     await click('Next');
+ 
+     expect(container.textContent).toContain('+$78.00');
++    expect(container.textContent).toContain('I understand this is a synthetic closing transaction inside the Tutorial Workspace.');
++    expect(container.textContent).not.toContain('I confirm this is the actual full closing transaction.');
++    expect(container.textContent).not.toContain('Record Exit & Debrief');
+     const exitConfirmation = container.querySelector<HTMLInputElement>('.confirm-row input[type="checkbox"]');
+     if (!exitConfirmation) throw new Error('Exit boundary confirmation was not rendered.');
+     await act(async () => { exitConfirmation.click(); });
+-    await click('Record Exit & Debrief');
++    await click('Record Tutorial Exit');
+     await click('Next');
+ 
+     expect(container.querySelector('[data-shared-ui="debrief-editor"]')).not.toBeNull();
+@@ -112,6 +124,22 @@ describe('Guided Walkthrough behavior', () => {
+     expect(fetchSpy).not.toHaveBeenCalled();
+   });
+ 
++  it('saves the bundled contract snapshot only in Tutorial memory while provider fetches stay disabled', async () => {
++    const fetchSpy = vi.spyOn(globalThis, 'fetch');
++    await act(async () => root.render(<GuidedWalkthrough open state={createGuidedTutorialState('in_progress', 1)} sessionKey={5} onStage={vi.fn()} onPause={vi.fn()} onFinish={vi.fn()} onExit={vi.fn()} onRestart={vi.fn()} />));
++
++    expect(container.querySelector('.intelligence-history')).toBeNull();
++    expect(button('Check Provider Status').disabled).toBe(true);
++    expect(button('Load Delayed Options').disabled).toBe(true);
++    await click('Save 6 Contracts');
++    expect(container.textContent).toContain('Tutorial fixture snapshot saved to this temporary session.');
++    expect(container.querySelector('.intelligence-history')?.textContent).toContain('Tutorial Fixture');
++    expect(button('Tutorial Snapshot Saved').disabled).toBe(true);
++    expect(fetchSpy).not.toHaveBeenCalled();
++    await click('Restart');
++    expect(container.querySelector('.intelligence-history')).toBeNull();
++  });
++
+   it('preserves editable arrows and Escape pause behavior', async () => {
+     const onStage = vi.fn(); const onPause = vi.fn();
+     await act(async () => root.render(<GuidedWalkthrough open state={createGuidedTutorialState('in_progress', 0)} sessionKey={2} onStage={onStage} onPause={onPause} onFinish={vi.fn()} onExit={vi.fn()} onRestart={vi.fn()} />));
+diff --git a/app/src/components/GuidedWalkthrough.tsx b/app/src/components/GuidedWalkthrough.tsx
+index 1ef2d68..64f0d3f 100644
+--- a/app/src/components/GuidedWalkthrough.tsx
++++ b/app/src/components/GuidedWalkthrough.tsx
+@@ -21,16 +21,11 @@ import {
+   saveTutorialCandidate,
+   saveTutorialDebrief,
+   saveTutorialIdea,
++  saveTutorialResearchSnapshot,
+   tutorialStageComplete,
+   type TutorialWorkspace,
+ } from '../features/tour/tutorial-workspace';
+ 
+-const tutorialIntelligenceActions: CatalystIntelligenceActions = {
+-  saveSnapshot: async () => undefined,
+-  loadProviderStatus: async () => [],
+-  loadDelayedOptions: async () => ({ snapshots: [] }),
+-};
+-
+ function TutorialBadge({ detail = 'Synthetic example' }: { detail?: string }) {
+   return <span className="tutorial-badge"><FlaskConical size={13} />Tutorial <small>{detail}</small></span>;
+ }
+@@ -65,6 +60,11 @@ export function GuidedWalkthrough({ open, state, sessionKey, onStage, onPause, o
+   const complete = tutorialStageComplete(workspace, state.stage);
+   const uiWorkspace = tutorialUiWorkspace(workspace, { previewIdea: state.stage >= 1, previewCandidate: state.stage >= 1 });
+   const position = uiWorkspace.positions[0];
++  const tutorialIntelligenceActions = useMemo<CatalystIntelligenceActions>(() => ({
++    saveSnapshot: async () => setWorkspace((current) => saveTutorialResearchSnapshot(current)),
++    loadProviderStatus: async () => [],
++    loadDelayedOptions: async () => ({ snapshots: [] }),
++  }), []);
+ 
+   useEffect(() => {
+     const next = reconstructTutorialWorkspace(state.stage, sessionId);
+@@ -137,6 +137,13 @@ export function GuidedWalkthrough({ open, state, sessionKey, onStage, onPause, o
+             methodology: 'Bundled synthetic tutorial fixture; no provider request made.', notes: 'Synthetic walkthrough data.',
+           },
+           providerActionsEnabled: false,
++          snapshotPersistence: {
++            saved: workspace.tutorialResearchSnapshotSaved,
++            savedLabel: 'Tutorial Snapshot Saved',
++            manualSuccessMessage: 'Tutorial snapshot saved to this temporary session.',
++            providerSuccessMessage: 'Tutorial fixture snapshot saved to this temporary session.',
++            savedNotice: 'This snapshot exists only in the temporary Tutorial Workspace. It did not enter your production Research Ledger and will disappear when the Tutorial is cleared.',
++          },
+           reviewAction: workspace.intelligenceReviewed ? undefined : { label: 'Mark Intelligence Reviewed', onReview: () => update((current) => reviewTutorialIntelligence(current, 104), 'Synthetic Intelligence reviewed. No provider request was made.') },
+         }}
+       />
+@@ -182,6 +189,12 @@ export function GuidedWalkthrough({ open, state, sessionKey, onStage, onPause, o
+               initialActualDebit={tutorialStory.actualDebit}
+               badge={<TutorialBadge detail="Manual record simulation" />}
+               title="Record the $1.32 Tutorial Fill"
++              presentation={{
++                description: 'Practice the real manual Record Trade flow with a synthetic fill. OJ did not place or route an order.',
++                actualDebitHelper: 'Synthetic spread fill used only inside the Tutorial Workspace.',
++                confirmationLabel: 'I understand this is a synthetic fill simulation. OJ did not place an order.',
++                submitLabel: 'Record Tutorial Trade',
++              }}
+               onCancel={remain}
+               onRecord={(input) => update((current) => recordTutorialTrade(current, input.actualDebit), 'Tutorial Trade recorded without brokerage activity.')}
+             />
+@@ -192,7 +205,19 @@ export function GuidedWalkthrough({ open, state, sessionKey, onStage, onPause, o
+             </StageShell>
+               : state.stage === 6 && position ? <StageShell action="exit" title="Record the Exit">
+                 <section className="card tutorial-trade-context"><TutorialBadge /><TradeDetailSurface position={position} workspace={uiWorkspace} /></section>
+-                <TradeExitEditor position={position} initialExitValue={tutorialStory.exitValue} initialExitReason="target_reached" onCancel={remain} onSave={(input) => update((current) => recordTutorialExit(current, input.exitValue), 'Tutorial Exit recorded outside real P/L.')} />
++                <TradeExitEditor
++                  position={position}
++                  initialExitValue={tutorialStory.exitValue}
++                  initialExitReason="target_reached"
++                  presentation={{
++                    description: 'Practice one complete synthetic closing transaction. The separate Debrief stage comes next.',
++                    confirmationLabel: 'I understand this is a synthetic closing transaction inside the Tutorial Workspace.',
++                    confirmationError: 'Complete and confirm the synthetic Tutorial closing transaction.',
++                    submitLabel: 'Record Tutorial Exit',
++                  }}
++                  onCancel={remain}
++                  onSave={(input) => update((current) => recordTutorialExit(current, input.exitValue), 'Tutorial Exit recorded outside real P/L.')}
++                />
+               </StageShell>
+                 : state.stage === 7 && position ? <StageShell action="debrief" title="Write the Debrief">
+                   <TutorialBadge detail="Session-only reflection" />
+diff --git a/app/src/components/editors/TradeLifecycleEditors.tsx b/app/src/components/editors/TradeLifecycleEditors.tsx
+index a578d86..e0b1424 100644
+--- a/app/src/components/editors/TradeLifecycleEditors.tsx
++++ b/app/src/components/editors/TradeLifecycleEditors.tsx
+@@ -56,6 +56,20 @@ export type TradeExitInput = {
+   confirmed: boolean;
+ };
+ 
++export type RecordTradePresentation = {
++  description?: string;
++  actualDebitHelper?: string;
++  confirmationLabel?: string;
++  submitLabel?: string;
++};
++
++export type TradeExitPresentation = {
++  description?: string;
++  confirmationLabel?: string;
++  confirmationError?: string;
++  submitLabel?: string;
++};
++
+ export function RiskCapacity({ workspace, projected }: { workspace: Workspace; projected?: number }) {
+   const risk = openRiskSummary(workspace.positions, workspace.policy?.maximumOpenRisk);
+   const remaining = projected === undefined || risk.ceiling === undefined ? risk.remaining : risk.ceiling - projected;
+@@ -67,7 +81,7 @@ export function RiskCapacity({ workspace, projected }: { workspace: Workspace; p
+   </section>;
+ }
+ 
+-export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit, onCancel, onRecord, title = 'Record Trade', badge }: {
++export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit, onCancel, onRecord, title = 'Record Trade', badge, presentation }: {
+   workspace: Workspace;
+   initialIdeaId?: string;
+   initialActualDebit?: number;
+@@ -75,7 +89,14 @@ export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit
+   onRecord: (input: RecordTradeInput) => void | Promise<void>;
+   title?: string;
+   badge?: ReactNode;
++  presentation?: RecordTradePresentation;
+ }) {
++  const copy = {
++    description: presentation?.description || 'Use this only after execution occurs elsewhere. OJ cannot place or change an order.',
++    actualDebitHelper: presentation?.actualDebitHelper || 'Your executed spread fill.',
++    confirmationLabel: presentation?.confirmationLabel || 'I confirm this is an actual fill executed outside OJ.',
++    submitLabel: presentation?.submitLabel || 'Record Trade',
++  };
+   const eligible = workspace.ideas.filter((idea) => ['watchlist','ready'].includes(idea.status) && !workspace.positions.some((position) => position.ideaId === idea.id));
+   const initialIdea = eligible.find((idea) => idea.id === initialIdeaId) || eligible[0];
+   const initialDraft = () => ({ ...tradeEntryDraft(initialIdea, initialIdea?.candidates[0]), ...(initialActualDebit === undefined ? {} : { actualDebit: String(initialActualDebit) }) });
+@@ -114,7 +135,7 @@ export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit
+   const projectedOver = validation.metrics && workspace.policy && validation.projectedRisk > workspace.policy.maximumOpenRisk;
+ 
+   return <section className="card inline-form trade-entry-form" data-shared-ui="record-trade-editor">
+-    <header><div>{badge}<span className="eyebrow">Manual execution record</span><h2>{title}</h2><p>Use this only after execution occurs elsewhere. OJ cannot place or change an order.</p></div></header>
++    <header><div>{badge}<span className="eyebrow">Manual execution record</span><h2>{title}</h2><p>{copy.description}</p></div></header>
+     {!eligible.length ? <EmptyCard title="No Eligible Ideas" subtitle="A Watchlist or Ready Idea without a confirmed trade is required." /> : <>
+       <div className="form-grid">
+         <label><span>Trade Idea</span><select value={form.ideaId} onChange={(event) => chooseIdea(event.target.value)}>{eligible.map((item) => <option key={item.id} value={item.id}>{item.ticker} · {item.strategy}</option>)}</select></label>
+@@ -124,7 +145,7 @@ export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit
+         <label><span>Actual Long Strike</span><input inputMode="decimal" value={form.longStrike} onChange={(event) => setForm({ ...form, longStrike: event.target.value })} /></label>
+         <label><span>Actual Short Strike</span><input inputMode="decimal" value={form.shortStrike} onChange={(event) => setForm({ ...form, shortStrike: event.target.value })} /></label>
+         <label><span>Contracts</span><input inputMode="numeric" value={form.contracts} onChange={(event) => setForm({ ...form, contracts: event.target.value })} /></label>
+-        <label><span>Actual Debit</span><small>Your executed spread fill.</small><input inputMode="decimal" value={form.actualDebit} onChange={(event) => setForm({ ...form, actualDebit: event.target.value })} /></label>
++        <label><span>Actual Debit</span><small>{copy.actualDebitHelper}</small><input inputMode="decimal" value={form.actualDebit} onChange={(event) => setForm({ ...form, actualDebit: event.target.value })} /></label>
+         <label><span>Entry Fees</span><input inputMode="decimal" value={form.fees} onChange={(event) => setForm({ ...form, fees: event.target.value })} /></label>
+         <label><span>Filled At</span><input type="datetime-local" value={form.openedAt} onChange={(event) => setForm({ ...form, openedAt: event.target.value })} /></label>
+         <label className="wide"><span>Entry Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+@@ -136,9 +157,9 @@ export function RecordTradeEditor({ workspace, initialIdeaId, initialActualDebit
+       </div>
+       <RiskCapacity workspace={workspace} projected={validation.metrics ? validation.projectedRisk : undefined} />
+       {projectedOver && <section className="risk-acknowledgement"><p>This historical fill brings open defined-risk loss above the current OJ ceiling. OJ records it but does not resize or reject the trade.</p><label className="confirm-row"><input type="checkbox" checked={form.riskAcknowledged} onChange={(event) => setForm({ ...form, riskAcknowledged: event.target.checked })} /><span>I acknowledge the OJ policy exception.</span></label><label><span>Reason</span><textarea value={form.riskNote} onChange={(event) => setForm({ ...form, riskNote: event.target.value })} /></label></section>}
+-      <label className="confirm-row"><input type="checkbox" checked={form.confirmed} onChange={(event) => setForm({ ...form, confirmed: event.target.checked })} /><span>I confirm this is an actual fill executed outside OJ.</span></label>
++      <label className="confirm-row"><input type="checkbox" checked={form.confirmed} onChange={(event) => setForm({ ...form, confirmed: event.target.checked })} /><span>{copy.confirmationLabel}</span></label>
+       {message && <p className="page-message" role="alert">{message}</p>}
+-      <footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Recording' : 'Record Trade'}</button></footer>
++      <footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Recording' : copy.submitLabel}</button></footer>
+     </>}
+   </section>;
+ }
+@@ -150,12 +171,18 @@ export function TradeCheckinEditor({ position, onCancel, onSave, initialWhatChan
+   return <section className="inline-form nested-trade-form" data-shared-ui="trade-checkin-editor"><header><h3>Trade Check-In</h3><p>Record a concise observation. This does not change or close the Trade.</p></header><div className="form-grid"><label><span>Thesis Health</span><select value={form.thesisHealth} onChange={(event) => setForm({ ...form, thesisHealth: event.target.value as ThesisHealth })}>{Object.entries(THESIS_HEALTH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Checked At</span><input type="datetime-local" value={form.checkedAt} onChange={(event) => setForm({ ...form, checkedAt: event.target.value })} /></label><label><span>Planned Exit</span><select value={form.plannedExitState} onChange={(event) => setForm({ ...form, plannedExitState: event.target.value as typeof form.plannedExitState })}><option value="still_valid">Still Valid</option><option value="reassess">Reassess</option><option value="changed">Management View Changed</option></select></label><label className="wide"><span>What Changed?</span><textarea value={form.whatChanged} onChange={(event) => setForm({ ...form, whatChanged: event.target.value })} /></label><label className="wide"><span>Current Management View</span><textarea placeholder="Optional update; the original plan remains unchanged." value={form.managementView} onChange={(event) => setForm({ ...form, managementView: event.target.value })} /></label></div><div className="checkin-signals"><label><input type="checkbox" checked={form.priceChanged} onChange={(event) => setForm({ ...form, priceChanged: event.target.checked })} />Price structure</label><label><input type="checkbox" checked={form.catalystChanged} onChange={(event) => setForm({ ...form, catalystChanged: event.target.checked })} />Catalyst information</label><label><input type="checkbox" checked={form.volatilityChanged} onChange={(event) => setForm({ ...form, volatilityChanged: event.target.checked })} />IV / pricing</label><label><input type="checkbox" checked={form.macroChanged} onChange={(event) => setForm({ ...form, macroChanged: event.target.checked })} />Macro context</label><label><input type="checkbox" checked={form.invalidationOccurred} onChange={(event) => setForm({ ...form, invalidationOccurred: event.target.checked })} />Invalidation occurred</label></div>{message && <p className="page-message">{message}</p>}<footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving || !form.whatChanged.trim()} onClick={() => void save()}>{saving ? 'Saving' : 'Save Check-In'}</button></footer></section>;
+ }
+ 
+-export function TradeExitEditor({ position, onCancel, onSave, initialExitValue = '', initialExitReason = 'manual_other' }: { position: Position; onCancel: () => void; onSave: (input: TradeExitInput) => void | Promise<void>; initialExitValue?: string | number; initialExitReason?: ExitReason }) {
++export function TradeExitEditor({ position, onCancel, onSave, initialExitValue = '', initialExitReason = 'manual_other', presentation }: { position: Position; onCancel: () => void; onSave: (input: TradeExitInput) => void | Promise<void>; initialExitValue?: string | number; initialExitReason?: ExitReason; presentation?: TradeExitPresentation }) {
++  const copy = {
++    description: presentation?.description || 'Phase 8.6 records one complete closing transaction; it does not provide multi-lot accounting.',
++    confirmationLabel: presentation?.confirmationLabel || 'I confirm this is the actual full closing transaction.',
++    confirmationError: presentation?.confirmationError || 'Complete and confirm the actual closing transaction.',
++    submitLabel: presentation?.submitLabel || 'Record Exit & Debrief',
++  };
+   const [form, setForm] = useState({ exitedAt: localTimestamp(), exitValue: String(initialExitValue), exitValueType: 'credit' as 'credit' | 'debit', fees: '0', exitReason: initialExitReason, thesisHealth: 'intact' as ThesisHealth, catalystRelationship: '', notes: '', confirmed: false });
+   const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
+   const pnl = realizedVerticalPnl(position.actualDebit || 0, position.entryFees, Number(form.exitValue), form.exitValueType, Number(form.fees), position.contracts);
+-  const save = async () => { if (!form.confirmed || pnl === null) return setMessage('Complete and confirm the actual closing transaction.'); setSaving(true); try { await onSave({ tradeId: position.id, exitedAt: form.exitedAt, exitValue: Number(form.exitValue), exitValueType: form.exitValueType, fees: Number(form.fees), exitReason: form.exitReason, thesisHealth: form.thesisHealth, catalystRelationship: form.catalystRelationship, notes: form.notes, confirmed: form.confirmed }); } catch (error) { setMessage(error instanceof Error ? error.message : 'Exit failed.'); } finally { setSaving(false); } };
+-  return <section className="inline-form nested-trade-form" data-shared-ui="trade-exit-editor"><header><h3>Record Full Exit</h3><p>Phase 8.6 records one complete closing transaction; it does not provide multi-lot accounting.</p></header><div className="form-grid"><label><span>Exited At</span><input type="datetime-local" value={form.exitedAt} onChange={(event) => setForm({ ...form, exitedAt: event.target.value })} /></label><label><span>Closing Transaction</span><select value={form.exitValueType} onChange={(event) => setForm({ ...form, exitValueType: event.target.value as 'credit' | 'debit' })}><option value="credit">Credit Received</option><option value="debit">Debit Paid</option></select></label><label><span>Closing Value</span><input inputMode="decimal" value={form.exitValue} onChange={(event) => setForm({ ...form, exitValue: event.target.value })} /></label><label><span>Exit Fees</span><input inputMode="decimal" value={form.fees} onChange={(event) => setForm({ ...form, fees: event.target.value })} /></label><label><span>Exit Reason</span><select value={form.exitReason} onChange={(event) => setForm({ ...form, exitReason: event.target.value as ExitReason })}>{Object.entries(EXIT_REASON_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Thesis at Exit</span><select value={form.thesisHealth} onChange={(event) => setForm({ ...form, thesisHealth: event.target.value as ThesisHealth })}>{Object.entries(THESIS_HEALTH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="wide"><span>Catalyst Relationship</span><input value={form.catalystRelationship} onChange={(event) => setForm({ ...form, catalystRelationship: event.target.value })} /></label><label className="wide"><span>Exit Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label></div><div className="exit-preview"><span>Estimated realized P/L</span><strong>{pnl === null ? 'Complete actual values' : `${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}`}</strong></div><label className="confirm-row"><input type="checkbox" checked={form.confirmed} onChange={(event) => setForm({ ...form, confirmed: event.target.checked })} /><span>I confirm this is the actual full closing transaction.</span></label>{message && <p className="page-message">{message}</p>}<footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Recording' : 'Record Exit & Debrief'}</button></footer></section>;
++  const save = async () => { if (!form.confirmed || pnl === null) return setMessage(copy.confirmationError); setSaving(true); try { await onSave({ tradeId: position.id, exitedAt: form.exitedAt, exitValue: Number(form.exitValue), exitValueType: form.exitValueType, fees: Number(form.fees), exitReason: form.exitReason, thesisHealth: form.thesisHealth, catalystRelationship: form.catalystRelationship, notes: form.notes, confirmed: form.confirmed }); } catch (error) { setMessage(error instanceof Error ? error.message : 'Exit failed.'); } finally { setSaving(false); } };
++  return <section className="inline-form nested-trade-form" data-shared-ui="trade-exit-editor"><header><h3>Record Full Exit</h3><p>{copy.description}</p></header><div className="form-grid"><label><span>Exited At</span><input type="datetime-local" value={form.exitedAt} onChange={(event) => setForm({ ...form, exitedAt: event.target.value })} /></label><label><span>Closing Transaction</span><select value={form.exitValueType} onChange={(event) => setForm({ ...form, exitValueType: event.target.value as 'credit' | 'debit' })}><option value="credit">Credit Received</option><option value="debit">Debit Paid</option></select></label><label><span>Closing Value</span><input inputMode="decimal" value={form.exitValue} onChange={(event) => setForm({ ...form, exitValue: event.target.value })} /></label><label><span>Exit Fees</span><input inputMode="decimal" value={form.fees} onChange={(event) => setForm({ ...form, fees: event.target.value })} /></label><label><span>Exit Reason</span><select value={form.exitReason} onChange={(event) => setForm({ ...form, exitReason: event.target.value as ExitReason })}>{Object.entries(EXIT_REASON_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Thesis at Exit</span><select value={form.thesisHealth} onChange={(event) => setForm({ ...form, thesisHealth: event.target.value as ThesisHealth })}>{Object.entries(THESIS_HEALTH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="wide"><span>Catalyst Relationship</span><input value={form.catalystRelationship} onChange={(event) => setForm({ ...form, catalystRelationship: event.target.value })} /></label><label className="wide"><span>Exit Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label></div><div className="exit-preview"><span>Estimated realized P/L</span><strong>{pnl === null ? 'Complete actual values' : `${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}`}</strong></div><label className="confirm-row"><input type="checkbox" checked={form.confirmed} onChange={(event) => setForm({ ...form, confirmed: event.target.checked })} /><span>{copy.confirmationLabel}</span></label>{message && <p className="page-message">{message}</p>}<footer><button onClick={onCancel}>Cancel</button><button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Recording' : copy.submitLabel}</button></footer></section>;
+ }
+ 
+ export function TradeDetailSurface({ position, workspace, onOpenCatalyst, onViewIdea }: { position: Position; workspace: Workspace; onOpenCatalyst?: (id: string) => void; onViewIdea?: () => void }) {
+diff --git a/app/src/features/tour/tutorial-ui-adapter.ts b/app/src/features/tour/tutorial-ui-adapter.ts
+index 8e95d28..817c66e 100644
+--- a/app/src/features/tour/tutorial-ui-adapter.ts
++++ b/app/src/features/tour/tutorial-ui-adapter.ts
+@@ -93,7 +93,7 @@ function positionView(workspace: TutorialWorkspace, idea: TradeIdea, catalyst: C
+     id: workspace.trade.id, ideaId: idea.id, candidateId: workspace.candidate.id, ticker: idea.ticker, strategy: idea.strategy, status: exit ? 'closed' : 'active', contracts: workspace.candidate.contracts,
+     maxRisk: workspace.trade.metrics.maxLoss, maxProfit: workspace.trade.metrics.maxProfit, breakEven: workspace.trade.metrics.breakEven, expiration: workspace.candidate.expiration, longStrike: workspace.candidate.longStrike, shortStrike: workspace.candidate.shortStrike,
+     actualDebit: workspace.trade.actualDebit, entryFees: 0, tradeClass: 'pre_catalyst_anticipation', originatingCatalystId: catalyst.id, exposureTags: ['tutorial'], openedAt: workspace.trade.openedAt, closedAt: exit?.exitedAt, checkins, exit, revision: 1, data: { tutorial: true },
+-    entryContext: { version: 1, capturedAt: workspace.trade.openedAt, ideaId: idea.id, ideaRevision: 1, ideaStatus: 'watchlist', researchStage: 'entry_candidate', assetType: 'Equity', bias: idea.bias, thesis: idea.thesis, evidence: idea.evidence, entryConditions: idea.entryConditions, invalidation: idea.invalidation, plannedExit: idea.plannedExit, holdThroughEvents: idea.holdThroughEvents, avoidEvents: idea.avoidEvents, candidate: { id: workspace.candidate.id, revision: 1, expiration: workspace.candidate.expiration, longStrike: workspace.candidate.longStrike, shortStrike: workspace.candidate.shortStrike, plannedDebit: workspace.candidate.debit, plannedContracts: workspace.candidate.contracts, plannedMaxLoss: workspace.candidate.metrics.maxLoss, plannedMaxProfit: workspace.candidate.metrics.maxProfit, plannedBreakEven: workspace.candidate.metrics.breakEven }, actual: { expiration: workspace.candidate.expiration, longStrike: workspace.candidate.longStrike, shortStrike: workspace.candidate.shortStrike, contracts: workspace.candidate.contracts, debit: workspace.trade.actualDebit, fees: 0, maxLoss: workspace.trade.metrics.maxLoss, maxProfit: workspace.trade.metrics.maxProfit, breakEven: workspace.trade.metrics.breakEven }, originatingCatalystId: catalyst.id, linkedCatalysts: [{ catalystId: catalyst.id, relationship: 'primary' }], researchSnapshotIds: [`tutorial-snapshot-${workspace.sessionId}`], forecastIds: [], tradeClass: 'pre_catalyst_anticipation', exposureTags: ['tutorial'] },
++    entryContext: { version: 1, capturedAt: workspace.trade.openedAt, ideaId: idea.id, ideaRevision: 1, ideaStatus: 'watchlist', researchStage: 'entry_candidate', assetType: 'Equity', bias: idea.bias, thesis: idea.thesis, evidence: idea.evidence, entryConditions: idea.entryConditions, invalidation: idea.invalidation, plannedExit: idea.plannedExit, holdThroughEvents: idea.holdThroughEvents, avoidEvents: idea.avoidEvents, candidate: { id: workspace.candidate.id, revision: 1, expiration: workspace.candidate.expiration, longStrike: workspace.candidate.longStrike, shortStrike: workspace.candidate.shortStrike, plannedDebit: workspace.candidate.debit, plannedContracts: workspace.candidate.contracts, plannedMaxLoss: workspace.candidate.metrics.maxLoss, plannedMaxProfit: workspace.candidate.metrics.maxProfit, plannedBreakEven: workspace.candidate.metrics.breakEven }, actual: { expiration: workspace.candidate.expiration, longStrike: workspace.candidate.longStrike, shortStrike: workspace.candidate.shortStrike, contracts: workspace.candidate.contracts, debit: workspace.trade.actualDebit, fees: 0, maxLoss: workspace.trade.metrics.maxLoss, maxProfit: workspace.trade.metrics.maxProfit, breakEven: workspace.trade.metrics.breakEven }, originatingCatalystId: catalyst.id, linkedCatalysts: [{ catalystId: catalyst.id, relationship: 'primary' }], researchSnapshotIds: workspace.tutorialResearchSnapshotSaved ? [`tutorial-snapshot-${workspace.sessionId}`] : [], forecastIds: [], tradeClass: 'pre_catalyst_anticipation', exposureTags: ['tutorial'] },
+   };
+ }
+ 
+@@ -105,7 +105,7 @@ export function tutorialUiWorkspace(workspace: TutorialWorkspace, options: { pre
+   const journal: JournalRecord[] = workspace.debrief && position ? [{ id: workspace.debrief.id, ideaId: idea.id, tradeId: position.id, kind: 'review', createdAt: workspace.fixture.observedAt, summary: workspace.debrief.lesson, data: { tutorial: true } }] : [];
+   return {
+     authenticated: true, approved: true, demo: false, ideas: includeIdea ? [idea] : [], archivedIdeas: [], catalysts: [catalyst], ideaCatalystLinks: includeIdea ? [{ id: `tutorial-link-${workspace.sessionId}`, tradeIdeaId: idea.id, catalystId: catalyst.id, relationship: 'primary' }] : [],
+-    researchSources: [], researchSnapshots: [snapshotView(workspace, catalyst)], removedResearchSnapshots: [], positions: position ? [position] : [], journal, opportunities: [],
++    researchSources: [], researchSnapshots: workspace.tutorialResearchSnapshotSaved ? [snapshotView(workspace, catalyst)] : [], removedResearchSnapshots: [], positions: position ? [position] : [], journal, opportunities: [],
+     profile: { id: `tutorial-user-${workspace.sessionId}`, email: 'tutorial@invalid.example', displayName: 'Tutorial User', initials: 'TU', role: 'owner', status: 'active' },
+     policy: { totalCapital: 1200, maximumOpenRisk: 800, strategies: ['bull-call-spread'], effectiveDate: workspace.fixture.observedAt.slice(0, 10), version: 1 },
+     workspaceMembers: [], pendingWorkspaceInvites: [], evidence: [], evidenceResponses: [], sharedTheses: [], sharedThesisResponses: [], activity: [], missions: [], missionAssignments: [], researchQuestions: [], liquidityObservations: [], missionCheckpoints: [], forecasts: [], forecastRevisions: [], debriefs: [], pendingReviews: 0, lastLoadedAt: workspace.fixture.observedAt,
+diff --git a/app/src/features/tour/tutorial-workspace.test.ts b/app/src/features/tour/tutorial-workspace.test.ts
+index 442dc43..67e2cf4 100644
+--- a/app/src/features/tour/tutorial-workspace.test.ts
++++ b/app/src/features/tour/tutorial-workspace.test.ts
+@@ -1,6 +1,7 @@
+ import { readFileSync } from 'node:fs';
+ import { describe, expect, it } from 'vitest';
+ import { demoWorkspace } from '../../data/demo';
++import { tutorialUiWorkspace } from './tutorial-ui-adapter';
+ import {
+   addTutorialCheckin,
+   clearTutorialWorkspace,
+@@ -13,6 +14,7 @@ import {
+   saveTutorialCandidate,
+   saveTutorialDebrief,
+   saveTutorialIdea,
++  saveTutorialResearchSnapshot,
+   tutorialStageComplete,
+ } from './tutorial-workspace';
+ 
+@@ -20,6 +22,9 @@ describe('isolated Tutorial Workspace', () => {
+   it('completes the synthetic Catalyst-to-Insights story with production math', () => {
+     let workspace = createTutorialWorkspace('full-story', new Date('2026-08-15T12:00:00Z'));
+     workspace = createTutorialCatalyst(workspace);
++    expect(tutorialUiWorkspace(workspace).researchSnapshots).toHaveLength(0);
++    workspace = saveTutorialResearchSnapshot(workspace);
++    expect(tutorialUiWorkspace(workspace).researchSnapshots).toMatchObject([{ provider: 'Tutorial Fixture' }]);
+     workspace = reviewTutorialIntelligence(workspace, 104);
+     workspace = saveTutorialIdea(workspace);
+     workspace = saveTutorialCandidate(workspace);
+@@ -46,6 +51,8 @@ describe('isolated Tutorial Workspace', () => {
+     expect(demoWorkspace.activity).toEqual(realBefore.activity);
+     tutorial = clearTutorialWorkspace(tutorial);
+     expect(tutorial.kind).toBe('tutorial');
++    expect(tutorial.tutorialResearchSnapshotSaved).toBe(false);
++    expect(tutorialUiWorkspace(tutorial).researchSnapshots).toHaveLength(0);
+     expect([tutorial.catalyst, tutorial.idea, tutorial.trade, tutorial.checkin, tutorial.exit, tutorial.debrief]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
+     expect(demoWorkspace).toEqual(realBefore);
+   });
+@@ -53,13 +60,24 @@ describe('isolated Tutorial Workspace', () => {
+   it('reconstructs only deterministic prerequisites for resume and clears on restart/finish', () => {
+     const resumed = reconstructTutorialWorkspace(5, 'resume', new Date('2026-08-15T12:00:00Z'));
+     expect(resumed.trade).toBeDefined();
++    expect(resumed.tutorialResearchSnapshotSaved).toBe(true);
+     expect(resumed.checkin).toBeUndefined();
+     const cleared = clearTutorialWorkspace(resumed);
+     expect(cleared.catalyst).toBeUndefined();
++    expect(cleared.tutorialResearchSnapshotSaved).toBe(false);
+     expect(cleared.fixture.options).toHaveLength(6);
+     expect(cleared.sessionId).toBe('resume');
+   });
+ 
++  it('requires both a session-only snapshot and review before Intelligence is complete', () => {
++    let workspace = createTutorialCatalyst(createTutorialWorkspace('snapshot-gate', new Date('2026-08-15T12:00:00Z')));
++    expect(tutorialStageComplete(workspace, 1)).toBe(false);
++    workspace = reviewTutorialIntelligence(workspace, 104);
++    expect(tutorialStageComplete(workspace, 1)).toBe(false);
++    workspace = saveTutorialResearchSnapshot(workspace);
++    expect(tutorialStageComplete(workspace, 1)).toBe(true);
++  });
++
+   it('has a structural no-write and no-provider import boundary', () => {
+     const sources = [
+       readFileSync(new URL('./tutorial-workspace.ts', import.meta.url), 'utf8'),
+diff --git a/app/src/features/tour/tutorial-workspace.ts b/app/src/features/tour/tutorial-workspace.ts
+index 5a64e45..c6de3ed 100644
+--- a/app/src/features/tour/tutorial-workspace.ts
++++ b/app/src/features/tour/tutorial-workspace.ts
+@@ -48,6 +48,7 @@ export type TutorialWorkspace = {
+   sessionId: string;
+   fixture: TutorialFixture;
+   catalyst?: TutorialCatalyst;
++  tutorialResearchSnapshotSaved: boolean;
+   intelligenceReviewed: boolean;
+   scenarioPrice: number;
+   idea?: TutorialIdea;
+@@ -63,11 +64,17 @@ export function createTutorialWorkspace(sessionId: string, now = new Date()): Tu
+     kind: 'tutorial',
+     sessionId,
+     fixture: createTutorialFixture(now),
++    tutorialResearchSnapshotSaved: false,
+     intelligenceReviewed: false,
+     scenarioPrice: 104,
+   };
+ }
+ 
++export function saveTutorialResearchSnapshot(workspace: TutorialWorkspace): TutorialWorkspace {
++  if (!workspace.catalyst) throw new Error('Create the Tutorial Catalyst first.');
++  return { ...workspace, tutorialResearchSnapshotSaved: true };
++}
++
+ export function createTutorialCatalyst(workspace: TutorialWorkspace, input?: Partial<Omit<TutorialCatalyst, 'id' | 'visibility'>>): TutorialWorkspace {
+   return {
+     ...workspace,
+@@ -90,7 +97,7 @@ export function reviewTutorialIntelligence(workspace: TutorialWorkspace, scenari
+ }
+ 
+ export function saveTutorialIdea(workspace: TutorialWorkspace, input?: Partial<Omit<TutorialIdea, 'id' | 'catalystId' | 'status'>>): TutorialWorkspace {
+-  if (!workspace.catalyst || !workspace.intelligenceReviewed) throw new Error('Review the Tutorial Catalyst and its Intelligence first.');
++  if (!workspace.catalyst || !workspace.tutorialResearchSnapshotSaved || !workspace.intelligenceReviewed) throw new Error('Save and review the Tutorial Catalyst Intelligence first.');
+   return {
+     ...workspace,
+     idea: {
+@@ -172,7 +179,10 @@ export function clearTutorialWorkspace(workspace: TutorialWorkspace): TutorialWo
+ export function reconstructTutorialWorkspace(stage: number, sessionId: string, now = new Date()): TutorialWorkspace {
+   let workspace = createTutorialWorkspace(sessionId, now);
+   if (stage >= 1) workspace = createTutorialCatalyst(workspace);
+-  if (stage >= 2) workspace = reviewTutorialIntelligence(workspace, 104);
++  if (stage >= 2) {
++    workspace = saveTutorialResearchSnapshot(workspace);
++    workspace = reviewTutorialIntelligence(workspace, 104);
++  }
+   if (stage >= 3) workspace = saveTutorialIdea(workspace);
+   if (stage >= 4) workspace = saveTutorialCandidate(workspace);
+   if (stage >= 5) workspace = recordTutorialTrade(workspace);
+@@ -185,7 +195,7 @@ export function reconstructTutorialWorkspace(stage: number, sessionId: string, n
+ export function tutorialStageComplete(workspace: TutorialWorkspace, stage: number): boolean {
+   return [
+     Boolean(workspace.catalyst),
+-    workspace.intelligenceReviewed,
++    workspace.tutorialResearchSnapshotSaved && workspace.intelligenceReviewed,
+     Boolean(workspace.idea),
+     Boolean(workspace.candidate),
+     Boolean(workspace.trade),
+diff --git a/app/src/pages/TradesPage.test.tsx b/app/src/pages/TradesPage.test.tsx
+index 28d45e7..8a6fa1b 100644
+--- a/app/src/pages/TradesPage.test.tsx
++++ b/app/src/pages/TradesPage.test.tsx
+@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
+ import { describe, expect, it } from 'vitest';
+ import { demoWorkspace } from '../data/demo';
+ import { TradesPage } from './TradesPage';
++import { TradeExitEditor } from '../components/editors/TradeLifecycleEditors';
+ import type { Position } from '../types/domain';
+ 
+ const activeTrade: Position = {
+@@ -28,6 +29,14 @@ describe('Trade workflow presentation', () => {
+     expect(html).toContain('value="2026-09-18"');
+     expect(html).toContain('Planned Candidate');
+     expect(html).toContain('Actual Trade');
++    expect(html).toContain('I confirm this is an actual fill executed outside OJ.');
++    expect(html).toContain('>Record Trade<');
++  });
++
++  it('preserves the production exit attestation and action copy', () => {
++    const html = renderToStaticMarkup(<TradeExitEditor position={activeTrade} onCancel={() => undefined} onSave={() => undefined} />);
++    expect(html).toContain('I confirm this is the actual full closing transaction.');
++    expect(html).toContain('>Record Exit &amp; Debrief<');
+   });
+ 
+   it('distinguishes OJ policy capacity from brokerage buying power', () => {
+diff --git a/app/tsconfig.tsbuildinfo b/app/tsconfig.tsbuildinfo
+index 1a4991f..11cfa25 100644
+--- a/app/tsconfig.tsbuildinfo
++++ b/app/tsconfig.tsbuildinfo
+@@ -1 +1 @@
+-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/authscreen.test.tsx","./src/components/authscreen.tsx","./src/components/catalystintelligence.test.tsx","./src/components/catalystintelligence.tsx","./src/components/catalystsourcelink.test.tsx","./src/components/catalystsourcelink.tsx","./src/components/catalystwarroom.test.tsx","./src/components/catalystwarroom.tsx","./src/components/cloudaccount.tsx","./src/components/guidedwalkthrough.test.tsx","./src/components/guidedwalkthrough.tsx","./src/components/loadingscreen.tsx","./src/components/memberbadge.tsx","./src/components/optionchainsnapshot.test.tsx","./src/components/optionchainsnapshot.tsx","./src/components/producttour.keyboard.test.tsx","./src/components/producttour.test.tsx","./src/components/producttour.tsx","./src/components/researchledger.test.tsx","./src/components/researchledger.tsx","./src/components/sharedthesispanel.test.tsx","./src/components/sharedthesispanel.tsx","./src/components/sharedtutorialui.test.tsx","./src/components/workflow.tsx","./src/components/auth-state.test.ts","./src/components/auth-state.ts","./src/components/cards/cards.test.tsx","./src/components/cards/index.tsx","./src/components/editors/catalysteditor.tsx","./src/components/editors/debriefeditor.tsx","./src/components/editors/ideaeditorsurface.tsx","./src/components/editors/tradelifecycleeditors.tsx","./src/components/layout/appshell.test.tsx","./src/components/layout/appshell.tsx","./src/config/navigation.test.ts","./src/config/navigation.ts","./src/data/actions.test.ts","./src/data/actions.ts","./src/data/catalyst-intelligence-actions.ts","./src/data/catalyst-intelligence.test.ts","./src/data/catalyst-intelligence.ts","./src/data/collaboration-actions.ts","./src/data/collaboration.test.ts","./src/data/collaboration.ts","./src/data/demo.ts","./src/data/workspace.test.ts","./src/data/workspace.ts","./src/features/packet.test.ts","./src/features/packet.ts","./src/features/export/export.test.ts","./src/features/export/markdown.ts","./src/features/export/zip.ts","./src/features/ideas/canonical.test.ts","./src/features/ideas/canonical.ts","./src/features/tour/guided-tutorial.test.ts","./src/features/tour/guided-tutorial.ts","./src/features/tour/keyboard.ts","./src/features/tour/placement.test.ts","./src/features/tour/placement.ts","./src/features/tour/product-tour-boundary.test.ts","./src/features/tour/product-tour-targets.test.tsx","./src/features/tour/product-tour.test.ts","./src/features/tour/product-tour.ts","./src/features/tour/tutorial-fixtures.ts","./src/features/tour/tutorial-ui-adapter.ts","./src/features/tour/tutorial-workspace.test.ts","./src/features/tour/tutorial-workspace.ts","./src/lib/auth-activation.test.ts","./src/lib/auth.test.ts","./src/lib/auth.ts","./src/lib/calendar.ts","./src/lib/catalyst-filter.test.ts","./src/lib/catalyst-filter.ts","./src/lib/date-time.test.ts","./src/lib/date-time.ts","./src/lib/external-reference.test.ts","./src/lib/external-reference.ts","./src/lib/forecast-window.test.ts","./src/lib/forecast-window.ts","./src/lib/idea-lifecycle.ts","./src/lib/invite-template.test.ts","./src/lib/loading.test.ts","./src/lib/loading.ts","./src/lib/payoff.test.ts","./src/lib/payoff.ts","./src/lib/research-metrics.test.ts","./src/lib/research-metrics.ts","./src/lib/research-snapshot-lifecycle.test.ts","./src/lib/research-snapshot-lifecycle.ts","./src/lib/session.test.ts","./src/lib/session.ts","./src/lib/supabase.ts","./src/lib/trade-lifecycle.test.ts","./src/lib/trade-lifecycle.ts","./src/lib/catalyst-intelligence/analytics.test.ts","./src/lib/catalyst-intelligence/analytics.ts","./src/lib/catalyst-intelligence/company-sources.test.ts","./src/lib/catalyst-intelligence/company-sources.ts","./src/lib/catalyst-intelligence/option-chain.test.ts","./src/lib/catalyst-intelligence/option-chain.ts","./src/lib/catalyst-intelligence/pricing.test.ts","./src/lib/catalyst-intelligence/pricing.ts","./src/lib/catalyst-intelligence/providers.test.ts","./src/lib/catalyst-intelligence/providers.ts","./src/lib/catalyst-intelligence/scenarios.test.ts","./src/lib/catalyst-intelligence/scenarios.ts","./src/lib/catalyst-intelligence/timeline.test.ts","./src/lib/catalyst-intelligence/timeline.ts","./src/lib/catalyst-intelligence/types.ts","./src/pages/catalystspage.test.tsx","./src/pages/catalystspage.tsx","./src/pages/ideaspage.test.tsx","./src/pages/ideaspage.tsx","./src/pages/insightspage.tsx","./src/pages/journalpage.test.tsx","./src/pages/journalpage.tsx","./src/pages/overviewpage.test.tsx","./src/pages/overviewpage.tsx","./src/pages/settingspage.test.tsx","./src/pages/settingspage.tsx","./src/pages/tradespage.test.tsx","./src/pages/tradespage.tsx","./src/pages/workspacepage.test.tsx","./src/pages/workspacepage.tsx","./src/storage/cloud.test.ts","./src/storage/cloud.ts","./src/storage/drafts.test.ts","./src/storage/drafts.ts","./src/storage/revisions.test.ts","./src/storage/revisions.ts","./src/styles/mobile-nav.test.ts","./src/test/fixtures/wmt-option-chain.ts","./src/types/domain.ts"],"version":"5.8.3"}
+\ No newline at end of file
++{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/authscreen.test.tsx","./src/components/authscreen.tsx","./src/components/catalystintelligence.behavior.test.tsx","./src/components/catalystintelligence.test.tsx","./src/components/catalystintelligence.tsx","./src/components/catalystsourcelink.test.tsx","./src/components/catalystsourcelink.tsx","./src/components/catalystwarroom.test.tsx","./src/components/catalystwarroom.tsx","./src/components/cloudaccount.tsx","./src/components/guidedwalkthrough.test.tsx","./src/components/guidedwalkthrough.tsx","./src/components/loadingscreen.tsx","./src/components/memberbadge.tsx","./src/components/optionchainsnapshot.test.tsx","./src/components/optionchainsnapshot.tsx","./src/components/producttour.keyboard.test.tsx","./src/components/producttour.test.tsx","./src/components/producttour.tsx","./src/components/researchledger.test.tsx","./src/components/researchledger.tsx","./src/components/sharedthesispanel.test.tsx","./src/components/sharedthesispanel.tsx","./src/components/sharedtutorialui.test.tsx","./src/components/workflow.tsx","./src/components/auth-state.test.ts","./src/components/auth-state.ts","./src/components/cards/cards.test.tsx","./src/components/cards/index.tsx","./src/components/editors/catalysteditor.tsx","./src/components/editors/debriefeditor.tsx","./src/components/editors/ideaeditorsurface.tsx","./src/components/editors/tradelifecycleeditors.tsx","./src/components/layout/appshell.test.tsx","./src/components/layout/appshell.tsx","./src/config/navigation.test.ts","./src/config/navigation.ts","./src/data/actions.test.ts","./src/data/actions.ts","./src/data/catalyst-intelligence-actions.ts","./src/data/catalyst-intelligence.test.ts","./src/data/catalyst-intelligence.ts","./src/data/collaboration-actions.ts","./src/data/collaboration.test.ts","./src/data/collaboration.ts","./src/data/demo.ts","./src/data/workspace.test.ts","./src/data/workspace.ts","./src/features/packet.test.ts","./src/features/packet.ts","./src/features/export/export.test.ts","./src/features/export/markdown.ts","./src/features/export/zip.ts","./src/features/ideas/canonical.test.ts","./src/features/ideas/canonical.ts","./src/features/tour/guided-tutorial.test.ts","./src/features/tour/guided-tutorial.ts","./src/features/tour/keyboard.ts","./src/features/tour/placement.test.ts","./src/features/tour/placement.ts","./src/features/tour/product-tour-boundary.test.ts","./src/features/tour/product-tour-targets.test.tsx","./src/features/tour/product-tour.test.ts","./src/features/tour/product-tour.ts","./src/features/tour/tutorial-fixtures.ts","./src/features/tour/tutorial-ui-adapter.ts","./src/features/tour/tutorial-workspace.test.ts","./src/features/tour/tutorial-workspace.ts","./src/lib/auth-activation.test.ts","./src/lib/auth.test.ts","./src/lib/auth.ts","./src/lib/calendar.ts","./src/lib/catalyst-filter.test.ts","./src/lib/catalyst-filter.ts","./src/lib/date-time.test.ts","./src/lib/date-time.ts","./src/lib/external-reference.test.ts","./src/lib/external-reference.ts","./src/lib/forecast-window.test.ts","./src/lib/forecast-window.ts","./src/lib/idea-lifecycle.ts","./src/lib/invite-template.test.ts","./src/lib/loading.test.ts","./src/lib/loading.ts","./src/lib/payoff.test.ts","./src/lib/payoff.ts","./src/lib/research-metrics.test.ts","./src/lib/research-metrics.ts","./src/lib/research-snapshot-lifecycle.test.ts","./src/lib/research-snapshot-lifecycle.ts","./src/lib/session.test.ts","./src/lib/session.ts","./src/lib/supabase.ts","./src/lib/trade-lifecycle.test.ts","./src/lib/trade-lifecycle.ts","./src/lib/catalyst-intelligence/analytics.test.ts","./src/lib/catalyst-intelligence/analytics.ts","./src/lib/catalyst-intelligence/company-sources.test.ts","./src/lib/catalyst-intelligence/company-sources.ts","./src/lib/catalyst-intelligence/option-chain.test.ts","./src/lib/catalyst-intelligence/option-chain.ts","./src/lib/catalyst-intelligence/pricing.test.ts","./src/lib/catalyst-intelligence/pricing.ts","./src/lib/catalyst-intelligence/providers.test.ts","./src/lib/catalyst-intelligence/providers.ts","./src/lib/catalyst-intelligence/scenarios.test.ts","./src/lib/catalyst-intelligence/scenarios.ts","./src/lib/catalyst-intelligence/timeline.test.ts","./src/lib/catalyst-intelligence/timeline.ts","./src/lib/catalyst-intelligence/types.ts","./src/pages/catalystspage.test.tsx","./src/pages/catalystspage.tsx","./src/pages/ideaspage.test.tsx","./src/pages/ideaspage.tsx","./src/pages/insightspage.tsx","./src/pages/journalpage.test.tsx","./src/pages/journalpage.tsx","./src/pages/overviewpage.test.tsx","./src/pages/overviewpage.tsx","./src/pages/settingspage.test.tsx","./src/pages/settingspage.tsx","./src/pages/tradespage.test.tsx","./src/pages/tradespage.tsx","./src/pages/workspacepage.test.tsx","./src/pages/workspacepage.tsx","./src/storage/cloud.test.ts","./src/storage/cloud.ts","./src/storage/drafts.test.ts","./src/storage/drafts.ts","./src/storage/revisions.test.ts","./src/storage/revisions.ts","./src/styles/mobile-nav.test.ts","./src/test/fixtures/wmt-option-chain.ts","./src/types/domain.ts"],"version":"5.8.3"}
+\ No newline at end of file
+-- 
+2.50.1 (Apple Git-155)
+

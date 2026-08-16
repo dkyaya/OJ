@@ -17,6 +17,8 @@ describe('Trade debrief continuity', () => {
   it('assembles facts, original plan, evolution, outcome, and research references', () => {
     const html = renderToStaticMarkup(<JournalPage workspace={{ ...demoWorkspace, positions: [closedTrade] }} initialTradeId={closedTrade.id} onSaved={() => undefined} />);
     expect(html).toContain('Facts');
+    expect(html).toContain('data-shared-ui="debrief-editor"');
+    expect(html).toContain('data-shared-ui="debrief-context"');
     expect(html).toContain('Original Plan');
     expect(html).toContain('Original entry thesis.');
     expect(html).toContain('Evolution');

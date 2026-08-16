@@ -101,5 +101,5 @@ export function productTourPreferenceData(data: Record<string, unknown> | undefi
 }
 
 export function productTourActionLabel(state: ProductTourState) {
-  return state.status === 'in_progress' ? 'Resume Product Tour' : 'Take Product Tour';
+  return state.status === 'in_progress' ? 'Resume Quick Tour' : 'Start Quick Tour';
 }

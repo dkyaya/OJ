@@ -1,11 +1,17 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { demoWorkspace } from '../data/demo';
-import { CatalystIntelligence } from './CatalystIntelligence';
+import { CatalystIntelligence, type CatalystIntelligenceActions } from './CatalystIntelligence';
+
+const actions: CatalystIntelligenceActions = {
+  saveSnapshot: async () => undefined,
+  loadProviderStatus: async () => [],
+  loadDelayedOptions: async () => ({ snapshots: [] }),
+};
 
 describe('Catalyst Intelligence UI', () => {
   it('renders manual-first intelligence, scenario, timeline, and provider disclosures', () => {
-    const markup = renderToStaticMarkup(<CatalystIntelligence catalyst={demoWorkspace.catalysts[0]} workspace={demoWorkspace} onSaved={() => undefined} setMessage={() => undefined} />);
+    const markup = renderToStaticMarkup(<CatalystIntelligence catalyst={demoWorkspace.catalysts[0]} workspace={demoWorkspace} actions={actions} onSaved={() => undefined} setMessage={() => undefined} />);
     expect(markup).toContain('Catalyst Intelligence');
     expect(markup).toContain('Permanent no-key path');
     expect(markup).toContain('Candidate Economics &amp; Scenario Lab');
