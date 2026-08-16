@@ -22,7 +22,7 @@ Only small, versioned onboarding state is stored in `application_preferences.dat
 
 Timestamps may also be present. Theme, calendar view, compact-card choice, mobile navigation, and unrelated preference JSON are preserved. No Catalyst, Idea, option chain, Trade, note, account value, or arbitrary tutorial input is stored in preferences. No schema migration is required.
 
-Settings exposes both modes under **Product Tour**. A user can start or replay the Quick Tour, start or resume the Guided Walkthrough, or restart the Guided Walkthrough with a clean tutorial session.
+Settings exposes both modes under **Product Tour** with lifecycle-specific actions. Quick Tour shows **Start Quick Tour** before use, **Resume Quick Tour** while in progress, and **Replay Quick Tour** after completion. Guided Walkthrough shows **Start Guided Walkthrough** before use, **Resume Guided Walkthrough** plus **Restart** while paused or in progress, and only **Replay Guided Walkthrough** after completion. This keeps replay available without presenting redundant completed-state actions.
 
 ## Isolated Tutorial Workspace
 
